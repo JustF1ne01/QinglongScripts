@@ -1,0 +1,5 @@
+Password
+.idea
+*.json
+__pycache__
+.env
