@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # new Env('阿里云盘签到')
-# cron 0 0 * * *
+# cron: 0 0 * * *
 """
 阿里云盘 每日签到脚本
 实现功能：

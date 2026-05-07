@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # new Env('Bitwarden备份')
-# cron 0 0 * * *
+# cron: 0 0 * * *
 """
 Bitwarden自动备份脚本（带哈希比较，避免重复同步）
 

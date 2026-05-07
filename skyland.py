@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # new Env('森空岛签到')
-# cron 0 8 * * *
+# cron: 0 8 * * *
 
 """
 森空岛（Skland）自动签到脚本

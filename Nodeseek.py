@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # new Env('Nodeseek签到')
-# cron 0 0 * * *
+# cron: 0 0 * * *
 """
 NodeSeek-Signin (Single-file / Check-in only / Minimal)
 =======================================================

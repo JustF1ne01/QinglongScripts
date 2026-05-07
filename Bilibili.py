@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # new Env('B站每日任务')
-# cron 0 0 * * *
+# cron: 0 0 * * *
 """
 Bilibili 每日任务脚本
 实现以下功能：

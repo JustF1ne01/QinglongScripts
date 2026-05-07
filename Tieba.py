@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # new Env('百度贴吧签到')
-# cron 0 0 * * *
+# cron: 0 0 * * *
 """
 百度贴吧 每日自动签到脚本
 实现功能：

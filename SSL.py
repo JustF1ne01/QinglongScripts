@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # new Env('SSL证书检查')
-# cron 0 0 * * *
+# cron: 0 0 * * *
 """
 SSL证书检查脚本
 

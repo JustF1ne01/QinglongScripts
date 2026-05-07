@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # new Env('机场签到')
-# cron 0 0 * * *
+# cron: 0 0 * * *
 """
 多服务自动签到脚本
 
