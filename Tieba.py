@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-# new Env('百度贴吧签到')
-# cron: 0 0 * * *
 """
 百度贴吧 每日自动签到脚本
 实现功能：
@@ -15,11 +13,13 @@ import os
 import random
 import time
 import requests
-from notify import send as notify_send
 from typing import Optional, List, Dict, Any
 
 # ==================== 用户配置（从环境变量读取）====================
 TIEBA_COOKIE = os.environ.get("TIEBA_COOKIE", "")
+# Telegram 推送配置（可选，留空则不推送）
+TG_BOT_TOKEN = os.environ.get("TG_BOT_TOKEN", "")
+TG_CHAT_ID = os.environ.get("TG_CHAT_ID", "")
 # ===================================================================
 
 # ---------- 日志函数（无颜色，带时间戳和级别）----------
@@ -250,16 +250,36 @@ def sign_forums(session: requests.Session, bduss: str, forums: List[Dict], tbs: 
         "details": details,
     }
 
-def build_message(stats: Dict, user_name: str, details: List[Dict]) -> str:
-    """构建签到报告消息，包含每个贴吧的详细签到结果"""
+# ---------- Telegram 推送 ----------
+def send_tg_message(text: str):
+    if not TG_BOT_TOKEN or not TG_CHAT_ID:
+        return
+    url = f"https://api.telegram.org/bot{TG_BOT_TOKEN}/sendMessage"
+    data = {
+        "chat_id": TG_CHAT_ID,
+        "text": text,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": True
+    }
+    try:
+        response = requests.post(url, data=data, timeout=10)
+        if response.status_code != 200:
+            log_error(f"Telegram 推送失败: {response.text}")
+        else:
+            log_success("Telegram 推送成功")
+    except Exception as e:
+        log_error(f"Telegram 推送异常: {e}")
+
+def build_tg_message(stats: Dict, user_name: str, details: List[Dict]) -> str:
+    """构建美观的 Telegram 消息，包含每个贴吧的详细签到结果"""
     lines = []
-    lines.append("📢 百度贴吧 签到报告\n")
+    lines.append("📢 <b>百度贴吧 签到报告</b>\n")
 
     # 账号信息
-    lines.append(f"👤 账号：{user_name}")
+    lines.append(f"👤 <b>账号：</b>{user_name}")
 
     # 统计摘要
-    lines.append("\n📊 签到统计")
+    lines.append("\n📊 <b>签到统计</b>")
     lines.append(f"📌 贴吧总数：{stats['total']}")
     lines.append(f"✅ 签到成功：{stats['success']}")
     lines.append(f"⚠️ 已经签到：{stats['exist']}")
@@ -268,7 +288,7 @@ def build_message(stats: Dict, user_name: str, details: List[Dict]) -> str:
 
     # 详细列表（每个贴吧一行）
     if details:
-        lines.append("\n📋 详细签到情况")
+        lines.append("\n📋 <b>详细签到情况</b>")
         for d in details:
             name = d["name"]
             status = d["status"]
@@ -334,5 +354,5 @@ def main() -> Dict:
 if __name__ == "__main__":
     result = main()
     if result:
-        message = build_message(result["stats"], result["user_name"], result["details"])
-        notify_send("百度贴吧签到报告", message)
+        tg_text = build_tg_message(result["stats"], result["user_name"], result["details"])
+        send_tg_message(tg_text)

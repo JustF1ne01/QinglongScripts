@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# new Env('Nodeseek签到')
-# cron: 0 0 * * *
 """
 NodeSeek-Signin (Single-file / Check-in only / Minimal)
 =======================================================
@@ -9,7 +7,7 @@ NodeSeek-Signin (Single-file / Check-in only / Minimal)
 功能：
 - 仅使用 NS_COOKIE（单账号）执行 NodeSeek 签到
 - NS_RANDOM：传给签到接口的 random 参数（true/false），用于是否“随机签到”（按仓库原脚本语义）
-- 通知方式：通过 notify.py 统一通知模块
+- 通知方式：仅 Telegram Bot（只保留 TG_BOT_TOKEN / TG_USER_ID）
 
 结构（按要求）：
 1) shebang
@@ -29,7 +27,6 @@ import random
 import time
 import requests
 from curl_cffi import requests as cffi_requests
-from notify import send as notify_send
 
 
 # ---------------- 用户配置（此处不要使用 cofig/config 变量） ----------------
@@ -42,6 +39,10 @@ NS_RANDOM = os.getenv("NS_RANDOM", "true").strip().lower()
 
 # curl_cffi 指纹（尽量模拟浏览器）
 NS_IMPERSONATE = os.getenv("NS_IMPERSONATE", "chrome110").strip()
+
+# Telegram Bot（tgbot）通知：只保留必要参数
+TG_BOT_TOKEN = os.getenv("TG_BOT_TOKEN", "")
+TG_USER_ID = os.getenv("TG_CHAT_ID", "")
 
 # 时间显示：固定 UTC+8（北京时间）
 TZ_GMT8 = timezone(timedelta(hours=8))
@@ -77,7 +78,7 @@ def _sleep_jitter_before_checkin() -> int:
     签到前随机延迟 0~30 分钟（含），降低自动化特征。
     返回实际延迟的秒数。
     """
-    delay_seconds = random.randint(0, 30 * 60)
+    delay_seconds = random.randint(0, 5 * 60)
     if delay_seconds <= 0:
         print("签到前随机延迟: 0s（跳过）")
         return 0
@@ -88,6 +89,33 @@ def _sleep_jitter_before_checkin() -> int:
     time.sleep(delay_seconds)
     return delay_seconds
 
+
+def send_tgbot(title: str, content: str) -> None:
+    if not TG_BOT_TOKEN or not TG_USER_ID:
+        print("未配置 TG_BOT_TOKEN 或 TG_USER_ID，跳过 Telegram 通知")
+        return
+
+    url = f"https://api.telegram.org/bot{TG_BOT_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": str(TG_USER_ID),
+        "text": f"{title}\n\n{content}",
+        "disable_web_page_preview": True,
+    }
+
+    try:
+        resp = requests.post(
+            url,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            data=payload,
+            timeout=20,
+        )
+        data = resp.json()
+        if data.get("ok"):
+            print("Telegram 推送成功")
+        else:
+            print(f"Telegram 推送失败: {data}")
+    except Exception as e:
+        print(f"Telegram 推送异常: {e}")
 
 
 def _format_result(ok: bool, status: str, message: str, elapsed_ms: int, delay_seconds: int) -> str:
@@ -177,7 +205,7 @@ def main() -> int:
         title = "NodeSeek 签到结果"
         content = _format_result(False, "invalid", "未配置 NS_COOKIE，无法签到。", 0, 0)
         print("\n" + content)
-        notify_send(title, content)
+        send_tgbot(title, content)
         return 1
 
     # ✅ 新增：签到前随机延迟 0~30 分钟
@@ -191,7 +219,7 @@ def main() -> int:
     content = _format_result(ok, status, message, elapsed_ms, delay_seconds)
 
     print("\n" + content)
-    notify_send(title, content)
+    send_tgbot(title, content)
 
     return 0 if ok else 1
 

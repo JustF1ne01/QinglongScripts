@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-# new Env('阿里云盘签到')
-# cron: 0 0 * * *
 """
 阿里云盘 每日签到脚本
 实现功能：
@@ -15,12 +13,14 @@ import time
 import requests
 import urllib3
 from typing import Optional, Dict, Any
-from notify import send as notify_send
 
 urllib3.disable_warnings()
 
 # ==================== 用户配置（从环境变量读取）====================
 ALIYUN_REFRESH_TOKEN = os.environ.get("ALIYUN_REFRESH_TOKEN", "")
+# Telegram 推送配置（可选，留空则不推送）
+TG_BOT_TOKEN = os.environ.get("TG_BOT_TOKEN", "")
+TG_CHAT_ID = os.environ.get("TG_CHAT_ID", "")
 # ===================================================================
 
 # ---------- 日志函数（无颜色，带时间戳和级别）----------
@@ -100,24 +100,44 @@ def sign(access_token: str) -> Dict[str, Any]:
         log_error(f"签到请求异常: {e}")
         return {"success": False, "message": str(e)}
 
-def build_message(result: Dict[str, Any], refresh_token: str) -> str:
-    """构建签到通知消息"""
+# ---------- Telegram 推送 ----------
+def send_tg_message(text: str):
+    if not TG_BOT_TOKEN or not TG_CHAT_ID:
+        return
+    url = f"https://api.telegram.org/bot{TG_BOT_TOKEN}/sendMessage"
+    data = {
+        "chat_id": TG_CHAT_ID,
+        "text": text,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": True
+    }
+    try:
+        response = requests.post(url, data=data, timeout=10)
+        if response.status_code != 200:
+            log_error(f"Telegram 推送失败: {response.text}")
+        else:
+            log_success("Telegram 推送成功")
+    except Exception as e:
+        log_error(f"Telegram 推送异常: {e}")
+
+def build_tg_message(result: Dict[str, Any], refresh_token: str) -> str:
+    """构建美观的 Telegram 消息"""
     lines = []
-    lines.append("📦 阿里云盘 签到报告\n")
+    lines.append("📦 <b>阿里云盘 签到报告</b>\n")
 
     if result.get("success"):
-        lines.append(f"\n✅ 签到状态：成功")
-        lines.append(f"📅 累计签到：{result['sign_days']} 天")
+        lines.append(f"\n✅ <b>签到状态：</b>成功")
+        lines.append(f"📅 <b>累计签到：</b>{result['sign_days']} 天")
         if result['reward_name'] or result['reward_desc']:
-            lines.append(f"🎁 今日奖励：{result['reward_name']}{result['reward_desc']}")
+            lines.append(f"🎁 <b>今日奖励：</b>{result['reward_name']}{result['reward_desc']}")
         else:
-            lines.append(f"🎁 今日奖励：无")
+            lines.append(f"🎁 <b>今日奖励：</b>无")
     else:
-        lines.append(f"\n❌ 签到状态：失败")
-        lines.append(f"⚠️ 错误信息：{result.get('message', '未知错误')}")
+        lines.append(f"\n❌ <b>签到状态：</b>失败")
+        lines.append(f"⚠️ <b>错误信息：</b>{result.get('message', '未知错误')}")
 
     lines.append("\n———————————————")
-    lines.append(f"🕒 执行时间：{time.strftime('%Y-%m-%d %H:%M:%S')}")
+    lines.append(f"🕒 <b>执行时间：</b>{time.strftime('%Y-%m-%d %H:%M:%S')}")
 
     return "\n".join(lines)
 
@@ -139,7 +159,7 @@ def main() -> Dict[str, Any]:
 
 if __name__ == "__main__":
     result = main()
-    message = build_message(result, ALIYUN_REFRESH_TOKEN)
-    notify_send("阿里云盘签到报告", message)
+    tg_text = build_tg_message(result, ALIYUN_REFRESH_TOKEN)
+    send_tg_message(tg_text)
     # 控制台输出最终结果
     log_info(f"签到结果：{result}")

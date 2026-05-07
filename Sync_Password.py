@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-# new Env('Bitwarden备份')
-# cron: 0 0 * * *
 """
 Bitwarden自动备份脚本（带哈希比较，避免重复同步）
 
@@ -9,7 +7,7 @@ Bitwarden自动备份脚本（带哈希比较，避免重复同步）
 2. 将密码数据保存到本地JSON文件
 3. 比较今天与昨天的备份文件哈希，若无变化则跳过WebDAV同步
 4. 将备份文件同步到WebDAV服务器（仅当有更新时）
-5. 通过notify模块发送备份报告
+5. 发送备份报告到Telegram，包含备份文件和状态信息
 
 作者：自动生成
 版本：1.1.0
@@ -20,7 +18,6 @@ import os
 import json
 import logging
 import requests
-from notify import send as notify_send
 import datetime
 import hashlib
 from requests.auth import HTTPBasicAuth
@@ -36,10 +33,14 @@ BITWARDEN_PASSWORD = os.environ.get("BITWARDEN_PASSWORD", "")
 WEBDAV_SERVER = os.environ.get("WEBDAV_SERVER", "")
 WEBDAV_USERNAME = os.environ.get("WEBDAV_USERNAME", "")
 WEBDAV_PASSWORD = os.environ.get("WEBDAV_PASSWORD", "")
-WEBDAV_REMOTE_DIR = os.environ.get("WEBDAV_REMOTE_DIR", "")
 
 # 本地路径配置
-LOCAL_BACKUP_PATH = os.environ.get("SYNC_LOCAL_DIR", "")
+LOCAL_BACKUP_PATH = "Password/"
+
+# Telegram配置
+TG_BOT_TOKEN = os.environ.get("TG_BOT_TOKEN", "")
+TG_USER_ID = os.environ.get("TG_CHAT_ID", "")
+TG_API_SERVER = os.environ.get("TG_API_SERVER", "https://api.telegram.org")
 
 # 备份配置
 BACKUP_FILENAME_FORMAT = "%Y-%m-%d_bitwarden_backup.json"  # 使用日期作为文件名
@@ -229,8 +230,7 @@ def sync_to_webdav(local_filepath: str) -> Tuple[bool, str]:
     
     # 构建远程路径
     filename = os.path.basename(local_filepath)
-    remote_dir = WEBDAV_REMOTE_DIR.strip('/')
-    remote_path = f"{WEBDAV_SERVER.rstrip('/')}/{remote_dir}/{filename}"
+    remote_path = f"{WEBDAV_SERVER.rstrip('/')}/123Pan/Password/{filename}"
     
     try:
         # 读取文件内容
@@ -261,41 +261,115 @@ def sync_to_webdav(local_filepath: str) -> Tuple[bool, str]:
         logger.error(f"WebDAV同步过程中发生未知错误: {e}")
         return False, f"❌ WebDAV同步失败: 未知错误 - {e}"
 
-def build_report(log_messages: list) -> str:
-    """构建备份报告"""
+def send_telegram_report(log_messages: list, backup_filepath: str = None) -> bool:
+    """
+    发送备份报告到Telegram
+    
+    Args:
+        log_messages: 日志消息列表
+        backup_filepath: 备份文件路径（仅当有更新时传入）
+        
+    Returns:
+        bool: 发送是否成功
+    """
     current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
+    
+    # 构建文本报告
     report_lines = [
-        f"📅 备份时间: {current_time}",
-        f"👤 账户: {BITWARDEN_USERNAME}",
-        "",
-        "📋 备份步骤状态:",
+        f"🔐 *Bitwarden备份报告*",
+        f"",
+        f"*📅 备份时间:* {current_time}",
+        f"*👤 账户:* `{BITWARDEN_USERNAME}`",
+        f"",
+        f"---",
+        f"",
+        f"*📋 备份步骤状态:*",
     ]
-
+    
+    # 添加每个步骤的状态
     for i, log_msg in enumerate(log_messages, 1):
-        emoji = '•'
-        clean_msg = log_msg
-        for e in ['✅', '❌', '⚠️', 'ℹ️', '⏭️']:
-            if log_msg.startswith(e):
-                emoji = e
-                clean_msg = log_msg[len(e):].strip()
-                break
-        report_lines.append(f"  {i}. {emoji} {clean_msg}")
-
+        # 提取emoji和内容
+        emoji = log_msg[0] if log_msg and log_msg[0] in ['✅', '❌', '⚠️', 'ℹ️', '⏭️'] else '•'
+        # 移除开头的emoji和空格，但保留完整内容用于显示
+        clean_msg = log_msg[1:].strip() if emoji != '•' else log_msg
+        report_lines.append(f"{i}. {emoji} {clean_msg}")
+    
+    # 添加统计信息
     success_count = sum(1 for msg in log_messages if msg.startswith("✅"))
     info_count = sum(1 for msg in log_messages if msg.startswith("ℹ️"))
     skip_count = sum(1 for msg in log_messages if msg.startswith("⏭️"))
     total_count = len(log_messages)
-
+    
     report_lines.extend([
-        "",
-        "📊 统计信息:",
+        f"",
+        f"---",
+        f"",
+        f"*📊 统计信息:*",
         f"  成功: {success_count} | 信息: {info_count} | 跳过: {skip_count} | 总计: {total_count}",
-        "",
-        f"自动备份脚本 • {datetime.datetime.now().strftime('%Y-%m-%d')}"
+        f"",
+        f"_自动备份脚本 • {datetime.datetime.now().strftime('%Y-%m-%d')}_"
     ])
-
-    return "\n".join(report_lines)
+    
+    text_report = "\n".join(report_lines)
+    
+    try:
+        # 如果有备份文件且存在，发送文件
+        if backup_filepath and os.path.exists(backup_filepath):
+            url = f"{TG_API_SERVER}/bot{TG_BOT_TOKEN}/sendDocument"
+            
+            with open(backup_filepath, 'rb') as file:
+                files = {
+                    'document': (
+                        os.path.basename(backup_filepath),
+                        file,
+                        'application/json'
+                    )
+                }
+                payload = {
+                    "chat_id": TG_USER_ID,
+                    "caption": text_report,
+                    "parse_mode": "Markdown"
+                }
+                
+                response = requests.post(url, data=payload, files=files, timeout=30)
+                response.raise_for_status()
+                
+                logger.info("Telegram报告（含备份文件）发送成功")
+                return True
+        else:
+            # 如果没有备份文件（无更新或失败），只发送文本报告
+            url = f"{TG_API_SERVER}/bot{TG_BOT_TOKEN}/sendMessage"
+            payload = {
+                "chat_id": TG_USER_ID,
+                "text": text_report,
+                "parse_mode": "Markdown",
+                "disable_web_page_preview": True
+            }
+            
+            response = requests.post(url, json=payload, timeout=10)
+            response.raise_for_status()
+            
+            logger.info("Telegram报告发送成功")
+            return True
+            
+    except requests.exceptions.RequestException as e:
+        logger.error(f"发送Telegram消息失败: {e}")
+        # 尝试发送简化版本
+        try:
+            simple_msg = f"Bitwarden备份完成，但详细报告发送失败。步骤数: {len(log_messages)}"
+            url = f"{TG_API_SERVER}/bot{TG_BOT_TOKEN}/sendMessage"
+            payload = {
+                "chat_id": TG_USER_ID,
+                "text": simple_msg,
+                "parse_mode": None
+            }
+            requests.post(url, json=payload, timeout=5)
+        except:
+            pass
+        return False
+    except Exception as e:
+        logger.error(f"发送Telegram消息时发生未知错误: {e}")
+        return False
 
 def perform_backup() -> Tuple[bool, list, str, bool]:
     """
@@ -383,17 +457,6 @@ def main():
     logger.info("Bitwarden自动备份脚本开始执行")
     logger.info("=" * 50)
     
-    # 检查必填环境变量
-    missing = []
-    for var in ("WEBDAV_REMOTE_DIR", "SYNC_LOCAL_DIR"):
-        if not os.environ.get(var):
-            missing.append(var)
-    if missing:
-        msg = f"❌ 缺少必填环境变量: {', '.join(missing)}，请在环境变量中配置后重试"
-        logger.error(msg)
-        notify_send("Bitwarden备份失败", msg)
-        return 1
-    
     # 记录开始时间
     start_time = datetime.datetime.now()
     
@@ -401,9 +464,8 @@ def main():
         # 执行备份流程
         backup_success, log_messages, backup_filepath, has_update = perform_backup()
         
-        # 发送报告
-        report = build_report(log_messages)
-        notify_send("Bitwarden备份报告", report)
+        # 发送报告到Telegram，如果有更新则发送文件，否则只发送文本
+        telegram_success = send_telegram_report(log_messages, backup_filepath if has_update else None)
         
         # 在控制台显示报告摘要
         print("\n" + "=" * 60)
@@ -443,7 +505,18 @@ def main():
         return 130
     except Exception as e:
         logger.error(f"脚本执行过程中发生未捕获的异常: {e}")
-        notify_send("Bitwarden备份异常", f"错误: {str(e)[:200]}")
+        # 尝试发送错误报告
+        error_msg = f"*🔥 Bitwarden备份脚本执行异常*\n错误: {str(e)[:200]}"
+        try:
+            url = f"{TG_API_SERVER}/bot{TG_BOT_TOKEN}/sendMessage"
+            payload = {
+                "chat_id": TG_USER_ID,
+                "text": error_msg,
+                "parse_mode": "Markdown"
+            }
+            requests.post(url, json=payload, timeout=10)
+        except:
+            pass
         return 1
 
 # ========== 程序入口 ==========

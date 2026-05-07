@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-# new Env('SSL证书检查')
-# cron: 0 0 * * *
 """
 SSL证书检查脚本
 
@@ -20,13 +18,16 @@ import ssl
 import socket
 import logging
 import requests
-from notify import send as notify_send
 from datetime import datetime
 from typing import List, Dict, Optional, Tuple
 
 # ========== 用户配置区域（从环境变量读取） ==========
 # 要检查的域名列表（环境变量中用英文逗号分隔，如 "a.com,b.com,c.com:8443"）
 DOMAINS_TO_CHECK = [d.strip() for d in os.environ.get("SSL_DOMAINS", "").split(",") if d.strip()]
+
+# Telegram Bot 配置
+TELEGRAM_BOT_TOKEN = os.environ.get("TG_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID = os.environ.get("TG_CHAT_ID", "")
 
 # 警告阈值（天）
 WARNING_THRESHOLD = 30
@@ -191,7 +192,7 @@ def format_certificate_report(certificates: List[Dict]) -> str:
         certificates: 证书信息列表
         
     Returns:
-        str: 格式化后的纯文本报告
+        str: 格式化后的HTML报告
     """
     # 分类证书
     categories = categorize_certificates(certificates)
@@ -204,52 +205,82 @@ def format_certificate_report(certificates: List[Dict]) -> str:
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     
     # 构建报告
-    lines = [f"🔔 SSL证书检查报告"]
+    lines = [f"🔔 <b>SSL证书检查报告</b>"]
     lines.append(f"⏰ 检查时间: {now}")
     lines.append(f"📊 总计: {len(certificates)} 个域名")
     lines.append("")
     
     # 已过期的证书
     if expired_certs:
-        lines.append("❌ 已过期的证书:")
+        lines.append("❌ <b>已过期的证书:</b>")
         for cert in expired_certs:
             expiry_date_str = cert["expiry_date"].strftime('%Y-%m-%d') if cert["expiry_date"] != datetime.min else "未知"
-            lines.append(f"   • {cert['domain']} - 已过期 {abs(cert['days_left'])} 天")
+            lines.append(f"   • {cert['domain']} - <b>已过期 {abs(cert['days_left'])} 天</b>")
             lines.append(f"     到期: {expiry_date_str}")
         lines.append("")
     
     # 即将过期的证书
     if warning_certs:
-        lines.append("⚠️ 即将过期的证书 (30天内):")
+        lines.append("⚠️ <b>即将过期的证书 (30天内):</b>")
         for cert in warning_certs:
             expiry_date_str = cert["expiry_date"].strftime('%Y-%m-%d')
-            lines.append(f"   • {cert['domain']} - 剩余 {cert['days_left']} 天")
+            lines.append(f"   • {cert['domain']} - <b>剩余 {cert['days_left']} 天</b>")
             lines.append(f"     到期: {expiry_date_str}")
             lines.append(f"     颁发: {cert['issuer']}")
         lines.append("")
     
     # 证书状态正常
     if valid_certs:
-        lines.append("✅ 证书状态正常:")
+        lines.append("✅ <b>证书状态正常:</b>")
         for cert in valid_certs:
             lines.append(f"   • {cert['domain']} - 剩余 {cert['days_left']} 天")
         lines.append("")
     
     # 检查失败的域名
     if error_certs:
-        lines.append("🔧 检查失败的域名:")
+        lines.append("🔧 <b>检查失败的域名:</b>")
         for cert in error_certs:
             lines.append(f"   • {cert['domain']} - 错误: {cert['error']}")
     
     # 添加统计信息
     lines.append("")
-    lines.append("📈 统计信息:")
+    lines.append("📈 <b>统计信息:</b>")
     lines.append(f"   ✅ 正常: {len(valid_certs)}")
     lines.append(f"   ⚠️  警告: {len(warning_certs)}")
     lines.append(f"   ❌ 过期: {len(expired_certs)}")
     lines.append(f"   🔧 失败: {len(error_certs)}")
     
     return "\n".join(lines)
+
+def send_telegram_message(message: str, parse_mode: str = "HTML") -> bool:
+    """
+    发送消息到Telegram
+    
+    Args:
+        message: 要发送的消息内容
+        parse_mode: 消息解析模式，默认HTML
+        
+    Returns:
+        bool: 发送是否成功
+    """
+    try:
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+        payload = {
+            "chat_id": TELEGRAM_CHAT_ID,
+            "text": message,
+            "parse_mode": parse_mode,
+            "disable_web_page_preview": True
+        }
+        
+        response = requests.post(url, json=payload, timeout=10)
+        response.raise_for_status()
+        
+        logger.info("Telegram消息发送成功")
+        return True
+        
+    except Exception as e:
+        logger.error(f"发送Telegram消息失败: {str(e)}")
+        return False
 
 
 # ========== 主函数 ==========
@@ -269,8 +300,12 @@ def main():
         report = format_certificate_report(cert_results)
         
         # 3. 发送报告到Telegram
-        notify_send("SSL证书检查报告", report)
-        logger.info("SSL证书检查报告已发送")
+        success = send_telegram_message(report)
+        
+        if success:
+            logger.info("SSL证书检查报告已发送到Telegram")
+        else:
+            logger.error("发送报告到Telegram失败")
         
         # 4. 在控制台打印摘要
         categories = categorize_certificates(cert_results)

@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# new Env('森空岛签到')
-# cron: 0 8 * * *
 
 """
 森空岛（Skland）自动签到脚本
@@ -9,9 +7,11 @@
   1. 模拟数美设备指纹，生成设备ID（dId）
   2. 使用用户Token登录森空岛，获取凭证
   3. 遍历绑定角色，对明日方舟、终末地等游戏进行每日签到
-  4. 签到结果通过notify.py统一推送（可选），推送格式美观
+  4. 签到结果通过Telegram机器人推送（可选），推送格式美观
 环境变量：
   TOKEN                森空岛Token，多个用英文逗号分隔
+  TELEGRAM_BOT_TOKEN   Telegram Bot Token（可选）
+  TELEGRAM_CHAT_ID     接收消息的Telegram Chat ID（可选）
 """
 
 import base64
@@ -27,7 +27,6 @@ import uuid
 from urllib import parse
 
 import requests
-from notify import send as notify_send
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives.ciphers import Cipher
@@ -37,7 +36,8 @@ from cryptography.hazmat.primitives.ciphers.modes import CBC, ECB
 
 # ==================== 用户配置（从环境变量读取）====================
 TOKENS = os.environ.get("SKYLAND_TOKEN", "").split(",")
-
+TELEGRAM_BOT_TOKEN = os.environ.get("TG_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID = os.environ.get("TG_CHAT_ID", "")
 APP_CODE = "4ca99fa6b56cc2ba"               # 森空岛固定应用码
 # ==============================================================
 
@@ -524,6 +524,27 @@ def format_push_message(accounts_logs):
     return "\n".join(lines).rstrip()
 
 
+def send_telegram_message(content: str):
+    """通过Telegram Bot发送消息（支持基本Markdown）"""
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        logging.info("未配置Telegram推送信息，跳过推送")
+        return
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": content,
+        "parse_mode": "Markdown",
+        "disable_web_page_preview": "true"
+    }
+    try:
+        resp = requests.post(url, params=payload).json()
+        if resp.get("ok"):
+            logging.info("Telegram推送成功")
+        else:
+            logging.error(f"Telegram推送失败: {resp}")
+    except Exception as e:
+        logging.error(f"Telegram推送异常: {e}")
+
 
 def main():
     if not TOKENS or TOKENS == ['']:
@@ -552,8 +573,8 @@ def main():
     # 输出到控制台（直接打印美化后的消息，不带时间戳）
     print("\n" + push_content + "\n")
 
-    # 发送通知
-    notify_send("森空岛签到报告", push_content)
+    # 发送Telegram
+    send_telegram_message(push_content)
 
 
 if __name__ == "__main__":

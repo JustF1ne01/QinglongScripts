@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-# new Env('机场签到')
-# cron: 0 0 * * *
 """
 多服务自动签到脚本
 
@@ -8,7 +6,7 @@
 1. 自动登录多个指定服务网站
 2. 执行每日签到任务
 3. 获取剩余流量信息
-4. 发送格式化通知（通过notify模块）
+4. 发送格式化通知到Telegram
 
 作者：自动生成
 版本：2.0.0
@@ -25,9 +23,13 @@ import requests
 from datetime import datetime
 from lxml import html
 from typing import Dict, Any, List, Tuple
-from notify import send as notify_send
 
 # ========== 用户配置区域（从环境变量读取） ==========
+# Telegram Bot配置
+TG_BOT_TOKEN = os.environ.get("TG_BOT_TOKEN", "")
+TG_USER_ID = os.environ.get("TG_CHAT_ID", "")
+TG_API_SERVER = os.environ.get("TG_API_SERVER", "https://api.telegram.org")
+
 # ========== 服务配置列表 ==========
 # 每个服务是一个字典，包含以下字段：
 #   name          : 服务显示名称
@@ -48,27 +50,7 @@ SERVICES = [
         "traffic_xpath": '//*[@id="app"]/div/div[3]/section/div[3]/div[2]/div/div[2]/div[2]',
         "username": os.environ.get("SUYING_USERNAME", ""),
         "password": os.environ.get("SUYING_PASSWORD", "")
-    },
-    {
-        "name": "iKuuu",
-        "base_url": "https://ikuuu.org",
-        "login_path": "/auth/login",
-        "checkin_path": "/user/checkin",
-        "user_info_path": "/user",
-        "traffic_xpath": "//h4[contains(text(),'剩余流量')]/ancestor::div[contains(@class,'card')]//div[contains(@class,'card-body')]",
-        "username": os.environ.get("IKUUU_USERNAME", ""),
-        "password": os.environ.get("IKUUU_PASSWORD", "")
-    },
-    {
-        "name": "69yun",
-        "base_url": "https://69yun69.com",
-        "login_path": "/auth/login",
-        "checkin_path": "/user/checkin",
-        "user_info_path": "/user",
-        "traffic_xpath": "//*[@id='kt_content']/div[2]/div/div[2]/div[2]/div/div[1]/div/div/div",
-        "username": os.environ.get("YUN69_USERNAME", ""),
-        "password": os.environ.get("YUN69_PASSWORD", "")
-    },
+    }
 ]
 
 # 其他配置
@@ -288,6 +270,38 @@ def get_traffic_info(session, service_config: Dict[str, str]) -> Dict[str, Any]:
 
     return result
 
+def send_telegram_message(message, parse_mode="Markdown"):
+    """
+    发送消息到Telegram
+
+    Args:
+        message: 要发送的消息内容
+        parse_mode: 消息解析模式，默认Markdown
+
+    Returns:
+        bool: 发送是否成功
+    """
+    url = f"{TG_API_SERVER}/bot{TG_BOT_TOKEN}/sendMessage"
+
+    payload = {
+        "chat_id": TG_USER_ID,
+        "text": message,
+        "parse_mode": parse_mode,
+        "disable_web_page_preview": True,
+    }
+
+    try:
+        response = requests.post(url, json=payload, timeout=REQUEST_TIMEOUT)
+        response.raise_for_status()
+        logger.info("Telegram消息发送成功")
+        return True
+    except requests.exceptions.RequestException as e:
+        logger.error(f"发送Telegram消息失败: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"发送Telegram消息时发生未知错误: {e}")
+        return False
+
 def format_multi_checkin_report(results: List[Dict[str, Any]]) -> str:
     """
     格式化多个服务的签到报告
@@ -304,7 +318,7 @@ def format_multi_checkin_report(results: List[Dict[str, Any]]) -> str:
     """
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     lines = [
-        "📋 多服务签到报告",
+        "📋 *多服务签到报告*",
         f"执行时间: {current_time}",
         ""
     ]
@@ -315,7 +329,7 @@ def format_multi_checkin_report(results: List[Dict[str, Any]]) -> str:
         traffic = res['traffic_result']
         login_error = res.get('login_error')
 
-        lines.append(f"{idx}. {name}")
+        lines.append(f"*{idx}. {name}*")
 
         # 登录状态
         if login_error:
@@ -334,7 +348,7 @@ def format_multi_checkin_report(results: List[Dict[str, Any]]) -> str:
 
             # 流量状态
             if traffic['success']:
-                lines.append(f"  📊 流量: ✅ 剩余 {traffic['traffic']}")
+                lines.append(f"  📊 流量: ✅ 剩余 `{traffic['traffic']}`")
             else:
                 lines.append(f"  📊 流量: ❌ 获取失败")
                 if traffic.get('error'):
@@ -344,7 +358,7 @@ def format_multi_checkin_report(results: List[Dict[str, Any]]) -> str:
 
     lines.extend([
         "---",
-        f"自动签到脚本 • {datetime.now().strftime('%Y-%m-%d')}"
+        f"_自动签到脚本 • {datetime.now().strftime('%Y-%m-%d')}_"
     ])
 
     return "\n".join(lines)
@@ -440,17 +454,29 @@ def main():
         # 4. 格式化合并报告
         report = format_multi_checkin_report(results)
 
-        # 5. 发送报告
-        notify_send("机场签到报告", report)
+        # 5. 发送报告到Telegram
+        telegram_success = send_telegram_message(report)
 
         # 6. 在控制台显示报告
         print("\n" + "=" * 60)
-        print(report)
+        print(report.replace("*", "").replace("`", ""))
         print("=" * 60)
 
         # 7. 计算执行时间
         execution_time = time.time() - start_time
         logger.info(f"脚本执行完成，耗时: {execution_time:.2f}秒")
+
+        # 8. 如果主报告发送失败，发送简短通知
+        if not telegram_success:
+            status_msg = "📋 多服务签到完成，但Telegram报告发送失败\n"
+            for res in results:
+                if res.get('login_error'):
+                    status_msg += f"{res['name']}: 登录失败\n"
+                else:
+                    checkin_ok = "✅" if res['checkin_result']['success'] else "❌"
+                    traffic_ok = "✅" if res['traffic_result']['success'] else "❌"
+                    status_msg += f"{res['name']}: 签到{checkin_ok} 流量{traffic_ok}\n"
+            send_telegram_message(status_msg, parse_mode=None)
 
         # 返回整体成功状态（只要有一个服务签到成功就算成功？可根据需求调整）
         any_success = any(
@@ -464,7 +490,8 @@ def main():
         return 130
     except Exception as e:
         logger.error(f"脚本执行过程中发生未捕获的异常: {e}")
-        notify_send("机场签到异常", str(e)[:200])
+        error_report = f"*🔥 脚本执行异常*\n错误: {str(e)[:200]}"
+        send_telegram_message(error_report)
         return 1
 
 # ========== 程序入口 ==========
