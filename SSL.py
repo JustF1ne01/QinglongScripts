@@ -36,7 +36,7 @@ def get_certificate_info(domain: str) -> Dict:
                 cert = ssock.getpeercert()
 
         expiry_str = cert["notAfter"]
-        expiry_date = datetime.strptime(expiry_str, "%b %d %H:%M:%S %Y %Z")
+        expiry_date = datetime.strptime(expiry_str, "%b %d %H:%M:%S %Y %Z").replace(tzinfo=timezone.utc)
         now = datetime.now(timezone.utc)
         days_left = (expiry_date - now).days
         issuer_dict = dict(x[0] for x in cert["issuer"])
