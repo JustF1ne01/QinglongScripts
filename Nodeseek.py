@@ -18,7 +18,7 @@ import requests
 from curl_cffi import requests as cffi_requests
 
 from utils import log_info, log_success, log_warning, log_error, beijing_now, beijing_time_str
-from notify import send as notify_send
+from notifier import send as notify_send
 
 # ==================== 用户配置 ====================
 NS_COOKIE = os.getenv("NS_COOKIE", "").strip()

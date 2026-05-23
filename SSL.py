@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from typing import List, Dict
 
 from utils import log_info, log_success, log_warning, log_error, beijing_now, beijing_time_str
-from notify import send as notify_send
+from notifier import send as notify_send
 
 # ==================== 用户配置 ====================
 DOMAINS_TO_CHECK = [d.strip() for d in os.environ.get("SSL_DOMAINS", "").split(",") if d.strip()]

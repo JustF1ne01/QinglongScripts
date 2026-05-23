@@ -17,7 +17,7 @@ import requests
 from typing import Optional, List, Dict, Any
 
 from utils import log_info, log_success, log_warning, log_error, beijing_time_str
-from notify import send as notify_send
+from notifier import send as notify_send
 
 # ==================== 用户配置 ====================
 TIEBA_COOKIE = os.environ.get("TIEBA_COOKIE", "")

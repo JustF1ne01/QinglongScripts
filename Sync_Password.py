@@ -18,7 +18,7 @@ from requests.auth import HTTPBasicAuth
 from typing import Dict, Any, Tuple
 
 from utils import log_info, log_success, log_warning, log_error, beijing_now, beijing_time_str
-from notify import send as notify_send, send_file as notify_send_file
+from notifier import send as notify_send, send_file as notify_send_file
 
 # ==================== 用户配置 ====================
 BITWARDEN_SERVER = os.environ.get("BITWARDEN_SERVER", "")

@@ -19,7 +19,7 @@ from lxml import html
 from typing import Dict, Any, List, Tuple
 
 from utils import log_info, log_success, log_warning, log_error, beijing_time_str, create_session
-from notify import send as notify_send
+from notifier import send as notify_send
 
 # ==================== 服务配置 ====================
 SERVICES = [

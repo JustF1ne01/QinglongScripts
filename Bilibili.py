@@ -16,7 +16,7 @@ import time
 import requests
 
 from utils import log_info, log_success, log_warning, log_error, beijing_time_str
-from notify import send as notify_send
+from notifier import send as notify_send
 
 # ==================== 用户配置 ====================
 BILIBILI_COOKIE = os.environ.get("BILIBILI_COOKIE", "")

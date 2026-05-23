@@ -13,7 +13,7 @@ import urllib3
 from typing import Dict, Any, Optional
 
 from utils import log_info, log_success, log_warning, log_error, beijing_time_str
-from notify import send as notify_send
+from notifier import send as notify_send
 
 urllib3.disable_warnings()
 

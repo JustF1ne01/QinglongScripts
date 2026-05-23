@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from utils import log_info, log_success, log_warning, log_error, beijing_time_str
-from notify import send as notify_send
+from notifier import send as notify_send
 
 # ==================== 用户配置 ====================
 STATE_FILE = Path.home() / ".hellogithub_bot_state.json"
