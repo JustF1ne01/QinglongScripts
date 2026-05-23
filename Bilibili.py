@@ -1,220 +1,133 @@
 #!/usr/bin/env python3
 """
+cron: 0 0 * * *
+new Env("B站每日任务")
 Bilibili 每日任务脚本
-实现以下功能：
 - 漫画签到
 - 投币任务（支持指定投币数和投币来源）
 - 观看视频任务
 - 分享视频任务
 - 银瓜子兑换硬币（可选）
-- 获取今日经验、当前经验、预计升级天数等信息
+- 获取今日经验、当前经验、预计升级天数
 """
 
 import os
 import time
 import requests
 
-# ==================== 用户配置（从环境变量读取）====================
+from utils import log_info, log_success, log_warning, log_error, beijing_time_str
+from notify import send as notify_send
+
+# ==================== 用户配置 ====================
 BILIBILI_COOKIE = os.environ.get("BILIBILI_COOKIE", "")
-COIN_NUM = int(os.environ.get("BILIBILI_COIN_NUM", "0"))           # 每日目标投币数，默认为0
-COIN_TYPE = int(os.environ.get("BILIBILI_COIN_TYPE", "1"))         # 投币来源：1-优先关注列表，其他-随机分区视频
-SILVER2COIN = os.environ.get("BILIBILI_SILVER2COIN", "false").lower() == "true"  # 是否开启银瓜子兑换硬币
+COIN_NUM = int(os.environ.get("BILIBILI_COIN_NUM", "0"))
+COIN_TYPE = int(os.environ.get("BILIBILI_COIN_TYPE", "1"))
+SILVER2COIN = os.environ.get("BILIBILI_SILVER2COIN", "false").lower() == "true"
 
-# Telegram 推送配置（可选，留空则不推送）
-TG_BOT_TOKEN = os.environ.get("TG_BOT_TOKEN", "")
-TG_CHAT_ID = os.environ.get("TG_CHAT_ID", "")
-# ===================================================================
-
-# 全局变量用于收集推送摘要的关键信息
 report_data = {}
 
-# 日志函数（无颜色，仅带级别和时间戳）
-def log_info(msg):
-    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[INFO] {timestamp} - {msg}")
 
-def log_success(msg):
-    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[SUCCESS] {timestamp} - {msg}")
-
-def log_warning(msg):
-    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[WARNING] {timestamp} - {msg}")
-
-def log_error(msg):
-    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[ERROR] {timestamp} - {msg}")
-
-def log_normal(msg):
-    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-    print(f"{timestamp} - {msg}")
-
-def send_tg_message(text):
-    """发送美观的摘要消息到 Telegram"""
-    if not TG_BOT_TOKEN or not TG_CHAT_ID:
-        return
-    url = f"https://api.telegram.org/bot{TG_BOT_TOKEN}/sendMessage"
-    data = {
-        "chat_id": TG_CHAT_ID,
-        "text": text,
-        "parse_mode": "HTML",
-        "disable_web_page_preview": True
-    }
-    try:
-        response = requests.post(url, data=data, timeout=10)
-        if response.status_code != 200:
-            log_error(f"Telegram 推送失败: {response.text}")
-        else:
-            log_success("Telegram 推送成功")
-    except Exception as e:
-        log_error(f"Telegram 推送异常: {e}")
-
-# ---------- Bilibili API 函数 ----------
+# ---------- Bilibili API ----------
 def get_nav(session):
-    """获取用户导航信息（昵称、uid、登录状态、硬币数、大会员类型、当前经验）"""
+    """获取用户导航信息"""
     url = "https://api.bilibili.com/x/web-interface/nav"
     ret = session.get(url=url).json()
-    uname = ret.get("data", {}).get("uname")
-    uid = ret.get("data", {}).get("mid")
-    is_login = ret.get("data", {}).get("isLogin")
-    coin = ret.get("data", {}).get("money")
-    vip_type = ret.get("data", {}).get("vipType")
-    current_exp = ret.get("data", {}).get("level_info", {}).get("current_exp")
-    return uname, uid, is_login, coin, vip_type, current_exp
+    data = ret.get("data", {})
+    return data.get("uname"), data.get("mid"), data.get("isLogin"), data.get("money"), data.get("vipType"), data.get("level_info", {}).get("current_exp")
+
 
 def get_today_exp(session):
     """获取今日经验明细"""
     url = "https://api.bilibili.com/x/member/web/exp/log?jsonp=jsonp"
-    today = time.strftime("%Y-%m-%d", time.localtime())
+    today = beijing_time_str("%Y-%m-%d")
     try:
         data_list = session.get(url=url).json().get("data", {}).get("list", [])
         return list(filter(lambda x: x["time"].split()[0] == today, data_list))
-    except:
+    except Exception:
         return []
+
 
 def manga_sign(session, platform="android"):
     """漫画签到"""
     try:
         url = "https://manga.bilibili.com/twirp/activity.v1.Activity/ClockIn"
-        post_data = {"platform": platform}
-        ret = session.post(url=url, data=post_data).json()
+        ret = session.post(url=url, data={"platform": platform}).json()
         if ret["code"] == 0:
-            msg = "✅ 签到成功"
+            return "✅ 签到成功"
         elif ret.get("msg") == "clockin clockin is duplicate":
-            msg = "✅ 今天已经签到过了"
+            return "✅ 今天已经签到过了"
         else:
-            msg = f"❌ 签到失败：{ret.get('msg', '未知错误')}"
+            msg = f"❌ 签到失败: {ret.get('msg', '未知错误')}"
             log_error(msg)
+            return msg
     except Exception as e:
-        msg = f"❌ 签到异常：{e!s}"
+        msg = f"❌ 签到异常: {e!s}"
         log_error(msg)
-    return msg
+        return msg
+
 
 def report_task(session, bili_jct, aid, cid, progres=300):
     """上报视频观看进度"""
     url = "http://api.bilibili.com/x/v2/history/report"
-    post_data = {"aid": aid, "cid": cid, "progres": progres, "csrf": bili_jct}
-    ret = session.post(url=url, data=post_data).json()
-    return ret
+    return session.post(url=url, data={"aid": aid, "cid": cid, "progres": progres, "csrf": bili_jct}).json()
+
 
 def share_task(session, bili_jct, aid):
     """分享视频"""
     url = "https://api.bilibili.com/x/web-interface/share/add"
-    post_data = {"aid": aid, "csrf": bili_jct}
-    ret = session.post(url=url, data=post_data).json()
-    return ret
+    return session.post(url=url, data={"aid": aid, "csrf": bili_jct}).json()
+
 
 def get_followings(session, uid, pn=1, ps=50, order="desc", order_type="attention"):
-    """获取用户关注的up主列表"""
-    params = {
-        "vmid": uid,
-        "pn": pn,
-        "ps": ps,
-        "order": order,
-        "order_type": order_type,
-    }
-    url = "https://api.bilibili.com/x/relation/followings"
-    ret = session.get(url=url, params=params).json()
-    return ret
+    """获取关注的 up 主列表"""
+    params = {"vmid": uid, "pn": pn, "ps": ps, "order": order, "order_type": order_type}
+    return session.get(url="https://api.bilibili.com/x/relation/followings", params=params).json()
+
 
 def space_arc_search(session, uid, pn=1, ps=30, tid=0, order="pubdate", keyword=""):
-    """获取指定up主的视频投稿"""
-    params = {
-        "mid": uid,
-        "pn": pn,
-        "Ps": ps,
-        "tid": tid,
-        "order": order,
-        "keyword": keyword,
-    }
-    url = "https://api.bilibili.com/x/space/arc/search"
-    ret = session.get(url=url, params=params).json()
-    count = 2  # 默认取前2个视频
+    """获取指定 up 主的视频投稿"""
+    params = {"mid": uid, "pn": pn, "Ps": ps, "tid": tid, "order": order, "keyword": keyword}
+    ret = session.get(url="https://api.bilibili.com/x/space/arc/search", params=params).json()
     data_list = [
-        {
-            "aid": one.get("aid"),
-            "cid": 0,
-            "title": one.get("title"),
-            "owner": one.get("author"),
-        }
-        for one in ret.get("data", {}).get("list", {}).get("vlist", [])[:count]
+        {"aid": one.get("aid"), "cid": 0, "title": one.get("title"), "owner": one.get("author")}
+        for one in ret.get("data", {}).get("list", {}).get("vlist", [])[:2]
     ]
-    return data_list, count
+    return data_list, 2
+
 
 def coin_add(session, bili_jct, aid, num=1, select_like=1):
     """给视频投币"""
     url = "https://api.bilibili.com/x/web-interface/coin/add"
-    post_data = {
-        "aid": aid,
-        "multiply": num,
-        "select_like": select_like,
-        "cross_domain": "true",
-        "csrf": bili_jct,
-    }
-    ret = session.post(url=url, data=post_data).json()
-    return ret
+    return session.post(url=url, data={"aid": aid, "multiply": num, "select_like": select_like, "cross_domain": "true", "csrf": bili_jct}).json()
+
 
 def live_status(session):
     """获取直播瓜子状态"""
-    url = "https://api.live.bilibili.com/pay/v1/Exchange/getStatus"
-    ret = session.get(url=url).json()
+    ret = session.get(url="https://api.live.bilibili.com/pay/v1/Exchange/getStatus").json()
     data = ret.get("data", {})
-    silver = data.get("silver", 0)
-    gold = data.get("gold", 0)
-    coin = data.get("coin", 0)
-    return {"coin": coin, "gold": gold, "silver": silver}
+    return {"coin": data.get("coin", 0), "gold": data.get("gold", 0), "silver": data.get("silver", 0)}
+
 
 def get_region(session, rid=1, num=6):
     """获取分区视频列表"""
     url = f"https://api.bilibili.com/x/web-interface/dynamic/region?ps={num}&rid={rid}"
     ret = session.get(url=url).json()
-    data_list = [
-        {
-            "aid": one.get("aid"),
-            "cid": one.get("cid"),
-            "title": one.get("title"),
-            "owner": one.get("owner", {}).get("name"),
-        }
-        for one in ret.get("data", {}).get("archives", [])
-    ]
-    return data_list
+    return [{"aid": one.get("aid"), "cid": one.get("cid"), "title": one.get("title"), "owner": one.get("owner", {}).get("name")} for one in ret.get("data", {}).get("archives", [])]
+
 
 def silver2coin(session, bili_jct):
     """银瓜子兑换硬币"""
     url = "https://api.live.bilibili.com/xlive/revenue/v1/wallet/silver2coin"
-    post_data = {"csrf": bili_jct}
-    ret = session.post(url=url, data=post_data).json()
-    return ret
+    return session.post(url=url, data={"csrf": bili_jct}).json()
+
 
 def main():
     global report_data
-    report_data = {}  # 重置报告数据
+    report_data = {}
 
-    # 解析cookie
     bilibili_cookie = {item.split("=")[0]: item.split("=")[1] for item in BILIBILI_COOKIE.split("; ")}
     bili_jct = bilibili_cookie.get("bili_jct")
 
-    # 创建session并设置cookie和headers
     session = requests.session()
     requests.utils.add_dict_to_cookiejar(session.cookies, bilibili_cookie)
     session.headers.update({
@@ -224,32 +137,31 @@ def main():
         "Connection": "keep-alive",
     })
 
-    # 获取用户信息，检查登录状态
     uname, uid, is_login, coin, vip_type, current_exp = get_nav(session=session)
     if not is_login:
-        log_error("登录失败，请检查cookie")
-        return "登录失败，请检查cookie"
+        log_error("登录失败，请检查 cookie")
+        return "登录失败，请检查 cookie"
 
-    log_success(f"登录成功，用户名：{uname}，UID：{uid}，当前硬币：{coin}")
+    log_success(f"登录成功，用户名: {uname}，UID: {uid}，当前硬币: {coin}")
     report_data["账号"] = uname
 
     # 漫画签到
     manhua_msg = manga_sign(session=session)
-    log_info(f"漫画签到：{manhua_msg}")
+    log_info(f"漫画签到: {manhua_msg}")
     report_data["漫画签到"] = manhua_msg
 
-    # 获取分区视频列表（备选）
+    # 获取分区视频列表
     aid_list = get_region(session=session)
 
     # 计算今日已投币数
     today_exp_list = get_today_exp(session=session)
     coins_av_count = len(list(filter(lambda x: x.get("reason") == "视频投币奖励", today_exp_list)))
     need_coin_num = COIN_NUM - coins_av_count
-    need_coin_num = need_coin_num if need_coin_num < coin else coin  # 不能超过现有硬币数
+    need_coin_num = need_coin_num if need_coin_num < coin else coin
 
     log_info(f"今日已投币 {coins_av_count} 个，目标投币 {COIN_NUM} 个，还需投 {need_coin_num} 个")
 
-    # 根据coin_type选择投币来源
+    # 根据 coin_type 选择投币来源
     if COIN_TYPE == 1:
         following_list = get_followings(session=session, uid=uid)
         count = 0
@@ -263,7 +175,6 @@ def main():
                     log_info("已获取足够关注用户的视频")
                     break
         else:
-            # 如果关注列表不足，补充分区视频
             aid_list += get_region(session=session)
 
     # 投币循环
@@ -276,10 +187,10 @@ def main():
                 log_success(f"成功给《{one.get('title')}》投一个币")
                 success_count += 1
             elif ret.get("code") == 34005:
-                log_warning(f"投币《{one.get('title')}》失败：{ret.get('message')}，继续下一个")
+                log_warning(f"投币《{one.get('title')}》失败: {ret.get('message')}，继续下一个")
                 continue
             else:
-                log_error(f"投币《{one.get('title')}》失败：{ret.get('message')}，跳过投币")
+                log_error(f"投币《{one.get('title')}》失败: {ret.get('message')}，跳过投币")
                 break
             if need_coin_num <= 0:
                 break
@@ -289,32 +200,19 @@ def main():
     log_info(coin_msg)
     report_data["投币任务"] = coin_msg
 
-    # 观看视频任务（使用第一个视频）
+    # 观看视频任务
     if aid_list:
         first = aid_list[0]
-        aid = first.get("aid")
-        cid = first.get("cid")
-        title = first.get("title")
-        report_ret = report_task(session=session, bili_jct=bili_jct, aid=aid, cid=cid)
-        if report_ret.get("code") == 0:
-            report_msg = f"✅ 观看《{title}》300秒"
-            log_success(report_msg)
-        else:
-            report_msg = f"❌ 观看任务失败"
-            log_error(report_msg)
+        report_ret = report_task(session=session, bili_jct=bili_jct, aid=first.get("aid"), cid=first.get("cid"))
+        report_msg = f"✅ 观看《{first.get('title')}》300秒" if report_ret.get("code") == 0 else "❌ 观看任务失败"
+        log_success(report_msg) if report_ret.get("code") == 0 else log_error(report_msg)
 
-        share_ret = share_task(session=session, bili_jct=bili_jct, aid=aid)
-        if share_ret.get("code") == 0:
-            share_msg = f"✅ 分享《{title}》成功"
-            log_success(share_msg)
-        else:
-            share_msg = f"❌ 分享失败"
-            log_error(share_msg)
+        share_ret = share_task(session=session, bili_jct=bili_jct, aid=first.get("aid"))
+        share_msg = f"✅ 分享《{first.get('title')}》成功" if share_ret.get("code") == 0 else "❌ 分享失败"
+        log_success(share_msg) if share_ret.get("code") == 0 else log_error(share_msg)
     else:
-        report_msg = "⚠️ 无视频可观看"
-        share_msg = "⚠️ 无视频可分享"
-        log_warning(report_msg)
-        log_warning(share_msg)
+        report_msg = "⚠️ 无视频可观看"; share_msg = "⚠️ 无视频可分享"
+        log_warning(report_msg); log_warning(share_msg)
     report_data["观看视频"] = report_msg
     report_data["分享任务"] = share_msg
 
@@ -326,7 +224,7 @@ def main():
             s2c_msg = "✅ 银瓜子兑换硬币成功"
             log_success(s2c_msg)
         else:
-            s2c_msg = f"❌ 兑换失败：{silver2coin_ret.get('message', '未知错误')}"
+            s2c_msg = f"❌ 兑换失败: {silver2coin_ret.get('message', '未知错误')}"
             log_error(s2c_msg)
     report_data["瓜子兑换"] = s2c_msg
 
@@ -336,7 +234,7 @@ def main():
     report_data["金瓜子数"] = live_stats["gold"]
     report_data["银瓜子数"] = live_stats["silver"]
 
-    # 再次获取用户信息，更新硬币和经验
+    # 再次获取用户信息，更新经验
     uname, uid, is_login, new_coin, vip_type, new_current_exp = get_nav(session=session)
     today_exp = sum(map(lambda x: x.get("delta", 0), get_today_exp(session=session)))
     update_data = (28800 - new_current_exp) // (today_exp if today_exp else 1) if today_exp else "未知"
@@ -345,50 +243,46 @@ def main():
     report_data["当前经验"] = new_current_exp
     report_data["升级还需"] = f"{update_data}天"
 
-    # 在控制台打印最终汇总（可选）
-    log_success("\n========== 任务执行汇总 ==========")
+    log_success("========== 任务执行汇总 ==========")
     for k, v in report_data.items():
         log_info(f"{k}: {v}")
-
     return report_data
 
-def build_tg_message(data):
-    """构建美观的 Telegram 消息"""
-    lines = []
-    lines.append("🎯 <b>Bilibili 每日任务报告</b>\n")
 
-    # 账号信息
-    lines.append(f"👤 <b>账号：</b>{data.get('账号', '未知')}")
+def build_report(data):
+    """构建签到报告"""
+    lines = ["🎯 Bilibili 每日任务报告", "", f"👤 账号: {data.get('账号', '未知')}", ""]
 
-    # 任务状态（用表情区分）
     tasks = [
-        ("📖 漫画签到", data.get('漫画签到', '')),
-        ("📺 观看视频", data.get('观看视频', '')),
-        ("🔗 分享任务", data.get('分享任务', '')),
-        ("💰 投币任务", data.get('投币任务', '')),
-        ("💱 瓜子兑换", data.get('瓜子兑换', '')),
+        ("📖 漫画签到", data.get("漫画签到", "")),
+        ("📺 观看视频", data.get("观看视频", "")),
+        ("🔗 分享任务", data.get("分享任务", "")),
+        ("💰 投币任务", data.get("投币任务", "")),
+        ("💱 瓜子兑换", data.get("瓜子兑换", "")),
     ]
     for name, value in tasks:
-        lines.append(f"{name}：{value}")
+        lines.append(f"{name}: {value}")
 
-    # 经验与瓜子
-    lines.append("\n📊 <b>数据统计</b>")
-    lines.append(f"⭐ 今日经验：{data.get('今日经验', 0)}")
-    lines.append(f"📈 当前经验：{data.get('当前经验', 0)}")
-    lines.append(f"⏳ 升级还需：{data.get('升级还需', '未知')}")
+    lines.append("")
+    lines.append("📊 数据统计")
+    lines.append(f"⭐ 今日经验: {data.get('今日经验', 0)}")
+    lines.append(f"📈 当前经验: {data.get('当前经验', 0)}")
+    lines.append(f"⏳ 升级还需: {data.get('升级还需', '未知')}")
 
-    lines.append("\n🥜 <b>瓜子库存</b>")
-    lines.append(f"🪙 硬币数量：{data.get('硬币数量', 0)}")
-    lines.append(f"✨ 金瓜子数：{data.get('金瓜子数', 0)}")
-    lines.append(f"🥈 银瓜子数：{data.get('银瓜子数', 0)}")
+    lines.append("")
+    lines.append("🥜 瓜子库存")
+    lines.append(f"🪙 硬币数量: {data.get('硬币数量', 0)}")
+    lines.append(f"✨ 金瓜子数: {data.get('金瓜子数', 0)}")
+    lines.append(f"🥈 银瓜子数: {data.get('银瓜子数', 0)}")
 
-    lines.append("\n———————————————")
-    lines.append(f"🕒 执行时间：{time.strftime('%Y-%m-%d %H:%M:%S')}")
-
+    lines.append("")
+    lines.append("─" * 18)
+    lines.append(f"🕒 执行时间: {beijing_time_str()}")
     return "\n".join(lines)
+
 
 if __name__ == "__main__":
     report = main()
-    if report:
-        tg_text = build_tg_message(report)
-        send_tg_message(tg_text)
+    if report and isinstance(report, dict):
+        tg_text = build_report(report)
+        notify_send("Bilibili 每日任务报告", tg_text)

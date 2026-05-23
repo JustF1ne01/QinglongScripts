@@ -1,535 +1,227 @@
 #!/usr/bin/env python3
 """
-Bitwarden自动备份脚本（带哈希比较，避免重复同步）
-
-功能：
-1. 自动登录Bitwarden服务器并获取所有密码数据
-2. 将密码数据保存到本地JSON文件
-3. 比较今天与昨天的备份文件哈希，若无变化则跳过WebDAV同步
-4. 将备份文件同步到WebDAV服务器（仅当有更新时）
-5. 发送备份报告到Telegram，包含备份文件和状态信息
-
-作者：自动生成
-版本：1.1.0
+cron: 0 0 * * *
+new Env("Bitwarden备份")
+Bitwarden 自动备份脚本（带哈希比较，避免重复同步）
+- 自动登录 Bitwarden 服务器并获取所有密码数据
+- 将密码数据保存到本地 JSON 文件
+- 比较今天与昨天的备份文件哈希，若无变化则跳过 WebDAV 同步
+- 将备份文件同步到 WebDAV 服务器（仅当有更新时）
 """
 
-# 导入外部库
 import os
 import json
-import logging
+import hashlib
 import requests
 import datetime
-import hashlib
 from requests.auth import HTTPBasicAuth
 from typing import Dict, Any, Tuple
 
-# ========== 用户配置区域（从环境变量读取） ==========
-# Bitwarden配置
+from utils import log_info, log_success, log_warning, log_error, beijing_now, beijing_time_str
+from notify import send as notify_send, send_file as notify_send_file
+
+# ==================== 用户配置 ====================
 BITWARDEN_SERVER = os.environ.get("BITWARDEN_SERVER", "")
 BITWARDEN_USERNAME = os.environ.get("BITWARDEN_USERNAME", "")
 BITWARDEN_PASSWORD = os.environ.get("BITWARDEN_PASSWORD", "")
-
-# WebDAV配置
 WEBDAV_SERVER = os.environ.get("WEBDAV_SERVER", "")
 WEBDAV_USERNAME = os.environ.get("WEBDAV_USERNAME", "")
 WEBDAV_PASSWORD = os.environ.get("WEBDAV_PASSWORD", "")
+WEBDAV_REMOTE_DIR = os.environ.get("WEBDAV_REMOTE_DIR", "")
+LOCAL_BACKUP_PATH = os.environ.get("SYNC_LOCAL_DIR", "Password/")
+BACKUP_FILENAME_FORMAT = "%Y-%m-%d_bitwarden_backup.json"
 
-# 本地路径配置
-LOCAL_BACKUP_PATH = "Password/"
 
-# Telegram配置
-TG_BOT_TOKEN = os.environ.get("TG_BOT_TOKEN", "")
-TG_USER_ID = os.environ.get("TG_CHAT_ID", "")
-TG_API_SERVER = os.environ.get("TG_API_SERVER", "https://api.telegram.org")
-
-# 备份配置
-BACKUP_FILENAME_FORMAT = "%Y-%m-%d_bitwarden_backup.json"  # 使用日期作为文件名
-
-# ========== 日志配置 ==========
-def setup_logging():
-    """配置日志系统"""
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
-    )
-    return logging.getLogger(__name__)
-
-logger = setup_logging()
-
-# ========== 功能函数区域 ==========
 def create_session() -> requests.Session:
-    """创建并配置一个requests会话"""
     session = requests.Session()
-    # 设置默认请求头
-    session.headers.update({
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': 'application/json, text/plain, */*',
-    })
+    session.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36", "Accept": "application/json, text/plain, */*"})
     return session
 
+
 def bitwarden_login(session: requests.Session) -> Tuple[bool, str]:
-    """
-    登录Bitwarden服务器
-    
-    Args:
-        session: requests会话对象
-        
-    Returns:
-        tuple: (登录是否成功, 日志消息)
-    """
     login_url = f"{BITWARDEN_SERVER.rstrip('/')}/identity/connect/token"
-    
     login_data = {
-        "scope": "api offline_access",
-        "client_id": "web",
-        "deviceType": "12",
-        "deviceIdentifier": "65ff3d73-fd5f-4835-8a50-fa7f41581f48",
-        "deviceName": "edge",
-        "grant_type": "password",
-        "username": BITWARDEN_USERNAME,
-        "password": BITWARDEN_PASSWORD,
+        "scope": "api offline_access", "client_id": "web", "deviceType": "12",
+        "deviceIdentifier": "65ff3d73-fd5f-4835-8a50-fa7f41581f48", "deviceName": "edge",
+        "grant_type": "password", "username": BITWARDEN_USERNAME, "password": BITWARDEN_PASSWORD,
     }
-    
     try:
-        logger.info(f"正在登录Bitwarden服务器: {BITWARDEN_SERVER}")
-        response = session.post(login_url, data=login_data, timeout=30)
-        response.raise_for_status()
-        
-        # 解析响应
-        json_response = response.json()
-        access_token = json_response.get("access_token")
-        
+        log_info(f"正在登录 Bitwarden: {BITWARDEN_SERVER}")
+        resp = session.post(login_url, data=login_data, timeout=30)
+        resp.raise_for_status()
+        access_token = resp.json().get("access_token")
         if access_token:
-            # 更新会话头信息
             session.headers.update({"Authorization": f"Bearer {access_token}"})
-            logger.info("Bitwarden登录成功")
-            return True, "✅ Bitwarden登录成功"
-        else:
-            logger.error(f"登录响应中未找到access_token: {json_response}")
-            return False, "❌ Bitwarden登录失败: 响应中未找到access_token"
-            
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Bitwarden登录请求失败: {e}")
-        return False, f"❌ Bitwarden登录失败: 网络请求错误 - {e}"
-    except json.JSONDecodeError as e:
-        logger.error(f"解析登录响应JSON失败: {e}")
-        return False, f"❌ Bitwarden登录失败: 响应格式错误 - {e}"
+            log_success("Bitwarden 登录成功")
+            return True, "✅ Bitwarden 登录成功"
+        log_error("响应中未找到 access_token")
+        return False, "❌ Bitwarden 登录失败: 未找到 access_token"
     except Exception as e:
-        logger.error(f"Bitwarden登录过程中发生未知错误: {e}")
-        return False, f"❌ Bitwarden登录失败: 未知错误 - {e}"
+        log_error(f"Bitwarden 登录失败: {e}")
+        return False, f"❌ Bitwarden 登录失败: {e}"
+
 
 def get_bitwarden_data(session: requests.Session) -> Tuple[bool, Any, str]:
-    """
-    从Bitwarden获取密码数据
-    
-    Args:
-        session: 已登录的requests会话对象
-        
-    Returns:
-        tuple: (是否成功, 密码数据, 日志消息)
-    """
     sync_url = f"{BITWARDEN_SERVER.rstrip('/')}/api/sync"
-    
     try:
-        logger.info("正在从Bitwarden获取密码数据...")
-        response = session.get(sync_url, params={"excludeDomains": "true"}, timeout=30)
-        response.raise_for_status()
-        
-        # 解析响应数据
-        data = response.json()
-        
-        # 检查数据是否有效
+        log_info("正在获取 Bitwarden 数据...")
+        resp = session.get(sync_url, params={"excludeDomains": "true"}, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
         if data and isinstance(data, dict):
             item_count = len(data.get("ciphers", []))
-            logger.info(f"成功获取Bitwarden数据，包含{item_count}个密码项")
-            return True, data, f"✅ 成功获取Bitwarden数据 ({item_count}个密码项)"
-        else:
-            logger.warning("获取到的Bitwarden数据为空或格式不正确")
-            return False, None, "⚠️ 获取Bitwarden数据: 数据为空或格式不正确"
-            
-    except requests.exceptions.RequestException as e:
-        logger.error(f"获取Bitwarden数据请求失败: {e}")
-        return False, None, f"❌ 获取Bitwarden数据失败: 网络请求错误 - {e}"
-    except json.JSONDecodeError as e:
-        logger.error(f"解析Bitwarden数据JSON失败: {e}")
-        return False, None, f"❌ 获取Bitwarden数据失败: 响应格式错误 - {e}"
+            log_success(f"成功获取数据 ({item_count} 个密码项)")
+            return True, data, f"✅ 成功获取数据 ({item_count} 个密码项)"
+        return False, None, "⚠️ 数据为空或格式不正确"
     except Exception as e:
-        logger.error(f"获取Bitwarden数据过程中发生未知错误: {e}")
-        return False, None, f"❌ 获取Bitwarden数据失败: 未知错误 - {e}"
+        log_error(f"获取数据失败: {e}")
+        return False, None, f"❌ 获取数据失败: {e}"
+
 
 def save_backup_locally(data: Dict[str, Any]) -> Tuple[bool, str, str]:
-    """
-    将备份数据保存到本地文件
-    
-    Args:
-        data: 要保存的Bitwarden数据
-        
-    Returns:
-        tuple: (是否成功, 文件路径, 日志消息)
-    """
-    # 确保备份目录存在
     if not os.path.exists(LOCAL_BACKUP_PATH):
-        try:
-            os.makedirs(LOCAL_BACKUP_PATH, exist_ok=True)
-            logger.info(f"创建备份目录: {LOCAL_BACKUP_PATH}")
-        except Exception as e:
-            logger.error(f"创建备份目录失败: {e}")
-            return False, "", f"❌ 创建备份目录失败: {e}"
-    
-    # 生成文件名
-    today = datetime.datetime.now()
+        os.makedirs(LOCAL_BACKUP_PATH, exist_ok=True)
+    today = beijing_now()
     filename = today.strftime(BACKUP_FILENAME_FORMAT)
     filepath = os.path.join(LOCAL_BACKUP_PATH, filename)
-    
     try:
-        # 保存数据到文件
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=4, ensure_ascii=False)
-        
-        # 获取文件大小
-        file_size = os.path.getsize(filepath)
-        file_size_mb = file_size / (1024 * 1024)
-        
-        logger.info(f"备份数据已保存到: {filepath} ({file_size_mb:.2f} MB)")
-        return True, filepath, f"✅ 本地备份成功: `{filename}` ({file_size_mb:.2f} MB)"
-        
+        file_size = os.path.getsize(filepath) / (1024 * 1024)
+        log_success(f"本地备份: {filename} ({file_size:.2f} MB)")
+        return True, filepath, f"✅ 本地备份成功: {filename} ({file_size:.2f} MB)"
     except Exception as e:
-        logger.error(f"保存备份文件失败: {e}")
+        log_error(f"本地备份失败: {e}")
         return False, "", f"❌ 本地备份失败: {e}"
 
+
 def get_file_hash(filepath: str) -> str:
-    """
-    计算文件的MD5哈希值
-    
-    Args:
-        filepath: 文件路径
-        
-    Returns:
-        str: 哈希值的十六进制字符串
-    """
     hash_md5 = hashlib.md5()
     with open(filepath, "rb") as f:
         for chunk in iter(lambda: f.read(4096), b""):
             hash_md5.update(chunk)
     return hash_md5.hexdigest()
 
-def sync_to_webdav(local_filepath: str) -> Tuple[bool, str]:
-    """
-    将本地备份文件同步到WebDAV服务器
-    
-    Args:
-        local_filepath: 本地备份文件路径
-        
-    Returns:
-        tuple: (是否成功, 日志消息)
-    """
-    if not os.path.exists(local_filepath):
-        logger.error(f"本地文件不存在: {local_filepath}")
-        return False, f"❌ WebDAV同步失败: 本地文件不存在"
-    
-    # 构建远程路径
-    filename = os.path.basename(local_filepath)
-    remote_path = f"{WEBDAV_SERVER.rstrip('/')}/123Pan/Password/{filename}"
-    
-    try:
-        # 读取文件内容
-        with open(local_filepath, 'rb') as f:
-            file_data = f.read()
-        
-        # 上传到WebDAV
-        logger.info(f"正在上传到WebDAV: {remote_path}")
-        response = requests.put(
-            url=remote_path,
-            data=file_data,
-            auth=HTTPBasicAuth(WEBDAV_USERNAME, WEBDAV_PASSWORD),
-            headers={'Content-Type': 'application/octet-stream'},
-            timeout=60
-        )
-        
-        if response.status_code in (200, 201, 204):
-            logger.info(f"WebDAV同步成功: {local_filepath} -> {remote_path}")
-            return True, f"✅ WebDAV同步成功: `{filename}`"
-        else:
-            logger.error(f"WebDAV同步失败，状态码: {response.status_code}, 响应: {response.text}")
-            return False, f"❌ WebDAV同步失败: 服务器返回状态码 {response.status_code}"
-            
-    except requests.exceptions.RequestException as e:
-        logger.error(f"WebDAV同步请求失败: {e}")
-        return False, f"❌ WebDAV同步失败: 网络请求错误 - {e}"
-    except Exception as e:
-        logger.error(f"WebDAV同步过程中发生未知错误: {e}")
-        return False, f"❌ WebDAV同步失败: 未知错误 - {e}"
 
-def send_telegram_report(log_messages: list, backup_filepath: str = None) -> bool:
-    """
-    发送备份报告到Telegram
-    
-    Args:
-        log_messages: 日志消息列表
-        backup_filepath: 备份文件路径（仅当有更新时传入）
-        
-    Returns:
-        bool: 发送是否成功
-    """
-    current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
-    # 构建文本报告
-    report_lines = [
-        f"🔐 *Bitwarden备份报告*",
-        f"",
-        f"*📅 备份时间:* {current_time}",
-        f"*👤 账户:* `{BITWARDEN_USERNAME}`",
-        f"",
-        f"---",
-        f"",
-        f"*📋 备份步骤状态:*",
-    ]
-    
-    # 添加每个步骤的状态
-    for i, log_msg in enumerate(log_messages, 1):
-        # 提取emoji和内容
-        emoji = log_msg[0] if log_msg and log_msg[0] in ['✅', '❌', '⚠️', 'ℹ️', '⏭️'] else '•'
-        # 移除开头的emoji和空格，但保留完整内容用于显示
-        clean_msg = log_msg[1:].strip() if emoji != '•' else log_msg
-        report_lines.append(f"{i}. {emoji} {clean_msg}")
-    
-    # 添加统计信息
-    success_count = sum(1 for msg in log_messages if msg.startswith("✅"))
-    info_count = sum(1 for msg in log_messages if msg.startswith("ℹ️"))
-    skip_count = sum(1 for msg in log_messages if msg.startswith("⏭️"))
-    total_count = len(log_messages)
-    
-    report_lines.extend([
-        f"",
-        f"---",
-        f"",
-        f"*📊 统计信息:*",
-        f"  成功: {success_count} | 信息: {info_count} | 跳过: {skip_count} | 总计: {total_count}",
-        f"",
-        f"_自动备份脚本 • {datetime.datetime.now().strftime('%Y-%m-%d')}_"
-    ])
-    
-    text_report = "\n".join(report_lines)
-    
+def sync_to_webdav(local_filepath: str) -> Tuple[bool, str]:
+    if not os.path.exists(local_filepath):
+        return False, "❌ WebDAV 同步失败: 本地文件不存在"
+    filename = os.path.basename(local_filepath)
+    remote_dir = WEBDAV_REMOTE_DIR.rstrip("/") if WEBDAV_REMOTE_DIR else "123Pan/Password"
+    remote_path = f"{WEBDAV_SERVER.rstrip('/')}/{remote_dir}/{filename}"
     try:
-        # 如果有备份文件且存在，发送文件
-        if backup_filepath and os.path.exists(backup_filepath):
-            url = f"{TG_API_SERVER}/bot{TG_BOT_TOKEN}/sendDocument"
-            
-            with open(backup_filepath, 'rb') as file:
-                files = {
-                    'document': (
-                        os.path.basename(backup_filepath),
-                        file,
-                        'application/json'
-                    )
-                }
-                payload = {
-                    "chat_id": TG_USER_ID,
-                    "caption": text_report,
-                    "parse_mode": "Markdown"
-                }
-                
-                response = requests.post(url, data=payload, files=files, timeout=30)
-                response.raise_for_status()
-                
-                logger.info("Telegram报告（含备份文件）发送成功")
-                return True
-        else:
-            # 如果没有备份文件（无更新或失败），只发送文本报告
-            url = f"{TG_API_SERVER}/bot{TG_BOT_TOKEN}/sendMessage"
-            payload = {
-                "chat_id": TG_USER_ID,
-                "text": text_report,
-                "parse_mode": "Markdown",
-                "disable_web_page_preview": True
-            }
-            
-            response = requests.post(url, json=payload, timeout=10)
-            response.raise_for_status()
-            
-            logger.info("Telegram报告发送成功")
-            return True
-            
-    except requests.exceptions.RequestException as e:
-        logger.error(f"发送Telegram消息失败: {e}")
-        # 尝试发送简化版本
-        try:
-            simple_msg = f"Bitwarden备份完成，但详细报告发送失败。步骤数: {len(log_messages)}"
-            url = f"{TG_API_SERVER}/bot{TG_BOT_TOKEN}/sendMessage"
-            payload = {
-                "chat_id": TG_USER_ID,
-                "text": simple_msg,
-                "parse_mode": None
-            }
-            requests.post(url, json=payload, timeout=5)
-        except:
-            pass
-        return False
+        with open(local_filepath, "rb") as f:
+            file_data = f.read()
+        log_info(f"正在上传到 WebDAV: {remote_path}")
+        resp = requests.put(url=remote_path, data=file_data, auth=HTTPBasicAuth(WEBDAV_USERNAME, WEBDAV_PASSWORD), headers={"Content-Type": "application/octet-stream"}, timeout=60)
+        if resp.status_code in (200, 201, 204):
+            log_success("WebDAV 同步成功")
+            return True, f"✅ WebDAV 同步成功: {filename}"
+        return False, f"❌ WebDAV 同步失败: 状态码 {resp.status_code}"
     except Exception as e:
-        logger.error(f"发送Telegram消息时发生未知错误: {e}")
-        return False
+        log_error(f"WebDAV 同步失败: {e}")
+        return False, f"❌ WebDAV 同步失败: {e}"
+
+
+def build_report_content(log_messages: list) -> str:
+    lines = [
+        "🔐 Bitwarden 备份报告", "",
+        f"📅 备份时间: {beijing_time_str()}",
+        f"👤 账户: {BITWARDEN_USERNAME}", "",
+        "─" * 18, "",
+        "📋 备份步骤状态:",
+    ]
+    for i, msg in enumerate(log_messages, 1):
+        lines.append(f"  {i}. {msg}")
+
+    success_count = sum(1 for m in log_messages if m.startswith("✅"))
+    info_count = sum(1 for m in log_messages if m.startswith("ℹ️") or m.startswith("⚠️"))
+    skip_count = sum(1 for m in log_messages if m.startswith("⏭️"))
+
+    lines.extend(["", "─" * 18, f"📊 统计: 成功 {success_count} | 信息 {info_count} | 跳过 {skip_count} | 总计 {len(log_messages)}", "", f"🕒 执行时间: {beijing_time_str()}"])
+    return "\n".join(lines)
+
 
 def perform_backup() -> Tuple[bool, list, str, bool]:
-    """
-    执行完整的备份流程
-    
-    Returns:
-        tuple: (是否完全成功, 日志消息列表, 备份文件路径, 是否有更新)
-    """
     log_messages = []
     backup_filepath = None
-    has_update = True  # 默认有更新
+    has_update = True
 
-    try:
-        # 1. 创建会话
-        session = create_session()
-        
-        # 2. 登录Bitwarden
-        login_success, login_msg = bitwarden_login(session)
-        log_messages.append(login_msg)
-        
-        if not login_success:
-            logger.error("Bitwarden登录失败，备份流程终止")
-            return False, log_messages, None, has_update
-        
-        # 3. 获取Bitwarden数据
-        data_success, bitwarden_data, data_msg = get_bitwarden_data(session)
-        log_messages.append(data_msg)
-        
-        if not data_success or bitwarden_data is None:
-            logger.error("获取Bitwarden数据失败，备份流程终止")
-            return False, log_messages, None, has_update
-        
-        # 4. 保存到本地
-        save_success, filepath, save_msg = save_backup_locally(bitwarden_data)
-        log_messages.append(save_msg)
-        backup_filepath = filepath if save_success else None
-        
-        # 5. 检查是否有更新（与昨天的文件比较）
-        if save_success and backup_filepath:
-            today = datetime.datetime.now()
-            yesterday = today - datetime.timedelta(days=1)
-            yesterday_filename = yesterday.strftime(BACKUP_FILENAME_FORMAT)
-            yesterday_filepath = os.path.join(LOCAL_BACKUP_PATH, yesterday_filename)
-            
-            if os.path.exists(yesterday_filepath):
-                new_hash = get_file_hash(backup_filepath)
-                old_hash = get_file_hash(yesterday_filepath)
-                if new_hash == old_hash:
-                    has_update = False
-                    logger.info("备份文件与昨天内容相同，无更新")
-                    log_messages.append("ℹ️ 备份文件与昨日一致，无新内容")
-                else:
-                    logger.info("备份文件有更新")
+    session = create_session()
+    login_success, login_msg = bitwarden_login(session)
+    log_messages.append(login_msg)
+    if not login_success:
+        return False, log_messages, None, has_update
+
+    data_success, bitwarden_data, data_msg = get_bitwarden_data(session)
+    log_messages.append(data_msg)
+    if not data_success or bitwarden_data is None:
+        return False, log_messages, None, has_update
+
+    save_success, filepath, save_msg = save_backup_locally(bitwarden_data)
+    log_messages.append(save_msg)
+    backup_filepath = filepath if save_success else None
+
+    if save_success and backup_filepath:
+        today = beijing_now()
+        yesterday = today - datetime.timedelta(days=1)
+        yesterday_filename = yesterday.strftime(BACKUP_FILENAME_FORMAT)
+        yesterday_filepath = os.path.join(LOCAL_BACKUP_PATH, yesterday_filename)
+        if os.path.exists(yesterday_filepath):
+            if get_file_hash(backup_filepath) == get_file_hash(yesterday_filepath):
+                has_update = False
+                log_info("备份文件与昨天相同，无更新")
+                log_messages.append("ℹ️ 备份文件与昨日一致，无新内容")
             else:
-                logger.info("昨日备份文件不存在，视为有更新")
-            
-            # 6. 同步到WebDAV（仅当有更新时）
-            if has_update:
-                sync_success, sync_msg = sync_to_webdav(backup_filepath)
-                log_messages.append(sync_msg)
-            else:
-                log_messages.append("⏭️ WebDAV同步跳过: 文件无变化")
+                log_info("备份文件有更新")
         else:
-            log_messages.append("⏭️ WebDAV同步跳过: 本地备份失败")
-        
-        # 检查整体是否成功
-        all_success = all(
-            msg.startswith("✅") or msg.startswith("⏭️") or msg.startswith("ℹ️") 
-            for msg in log_messages
-        )
-        
-        return all_success, log_messages, backup_filepath, has_update
-        
-    except Exception as e:
-        logger.error(f"备份流程执行过程中发生未捕获的异常: {e}")
-        log_messages.append(f"❌ 备份流程异常: {str(e)[:100]}")
-        return False, log_messages, backup_filepath, has_update
+            log_info("昨日备份不存在，视为有更新")
+        if has_update:
+            sync_success, sync_msg = sync_to_webdav(backup_filepath)
+            log_messages.append(sync_msg)
+        else:
+            log_messages.append("⏭️ WebDAV 同步跳过: 文件无变化")
+    else:
+        log_messages.append("⏭️ WebDAV 同步跳过: 本地备份失败")
 
-# ========== 主函数 ==========
+    all_success = all(msg.startswith("✅") or msg.startswith("⏭️") or msg.startswith("ℹ️") for msg in log_messages)
+    return all_success, log_messages, backup_filepath, has_update
+
+
 def main():
-    """
-    主函数 - 程序入口点
-    """
-    logger.info("=" * 50)
-    logger.info("Bitwarden自动备份脚本开始执行")
-    logger.info("=" * 50)
-    
-    # 记录开始时间
-    start_time = datetime.datetime.now()
-    
-    try:
-        # 执行备份流程
-        backup_success, log_messages, backup_filepath, has_update = perform_backup()
-        
-        # 发送报告到Telegram，如果有更新则发送文件，否则只发送文本
-        telegram_success = send_telegram_report(log_messages, backup_filepath if has_update else None)
-        
-        # 在控制台显示报告摘要
-        print("\n" + "=" * 60)
-        print("Bitwarden备份完成报告:")
-        print("=" * 60)
-        
-        for i, msg in enumerate(log_messages, 1):
-            print(f"{i}. {msg}")
-        
-        # 显示统计信息
-        success_count = sum(1 for msg in log_messages if msg.startswith("✅"))
-        info_count = sum(1 for msg in log_messages if msg.startswith("ℹ️"))
-        skip_count = sum(1 for msg in log_messages if msg.startswith("⏭️"))
-        total_count = len(log_messages)
-        
-        print("\n" + "-" * 40)
-        print(f"总结: {success_count}个成功, {info_count}个信息, {skip_count}个跳过, 总计{total_count}个步骤")
-        print(f"备份文件: {backup_filepath or '未生成'}")
-        print(f"文件更新: {'是' if has_update else '否（无变化）'}")
-        
-        # 计算执行时间
-        end_time = datetime.datetime.now()
-        execution_time = (end_time - start_time).total_seconds()
-        print(f"执行时间: {execution_time:.2f}秒")
-        print("=" * 60)
-        
-        # 根据备份结果返回退出代码
-        if backup_success:
-            logger.info("备份流程完全成功")
-            return 0
-        else:
-            logger.warning("备份流程部分失败")
-            return 1
-            
-    except KeyboardInterrupt:
-        logger.info("用户中断执行")
-        return 130
-    except Exception as e:
-        logger.error(f"脚本执行过程中发生未捕获的异常: {e}")
-        # 尝试发送错误报告
-        error_msg = f"*🔥 Bitwarden备份脚本执行异常*\n错误: {str(e)[:200]}"
-        try:
-            url = f"{TG_API_SERVER}/bot{TG_BOT_TOKEN}/sendMessage"
-            payload = {
-                "chat_id": TG_USER_ID,
-                "text": error_msg,
-                "parse_mode": "Markdown"
-            }
-            requests.post(url, json=payload, timeout=10)
-        except:
-            pass
-        return 1
+    log_info("=" * 50)
+    log_info("Bitwarden 自动备份脚本开始执行")
+    log_info("=" * 50)
 
-# ========== 程序入口 ==========
+    start_time = beijing_now()
+    backup_success, log_messages, backup_filepath, has_update = perform_backup()
+
+    title = f"Bitwarden 备份报告"
+    content = build_report_content(log_messages)
+
+    if has_update and backup_filepath and os.path.exists(backup_filepath):
+        notify_send_file(title, content, backup_filepath)
+    else:
+        notify_send(title, content)
+
+    print(f"\n{'=' * 60}\nBitwarden 备份完成报告:\n{'=' * 60}")
+    for i, msg in enumerate(log_messages, 1):
+        print(f"{i}. {msg}")
+    print(f"\n执行时间: {(beijing_now() - start_time).total_seconds():.2f}秒")
+    print("=" * 60)
+
+    return 0 if backup_success else 1
+
+
 if __name__ == "__main__":
     import sys
-    
-    # 设置退出代码
-    exit_code = main()
-    
-    # 记录结束信息
-    logger.info("=" * 50)
-    logger.info(f"脚本执行结束，退出代码: {exit_code}")
-    logger.info("=" * 50)
-    
-    # 退出程序
+    try:
+        exit_code = main()
+    except KeyboardInterrupt:
+        log_info("用户中断执行")
+        exit_code = 130
+    except Exception as e:
+        log_error(f"脚本异常: {e}")
+        exit_code = 1
+    log_info(f"脚本执行结束，退出代码: {exit_code}")
     sys.exit(exit_code)

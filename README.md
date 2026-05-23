@@ -55,6 +55,12 @@
 
 ---
 
+## 📡 API 文档 | API Documentation
+
+各脚本调用的全部 API 接口详见 [docs/api.md](docs/api.md)。
+
+---
+
 ## 📣 通知推送 | Notifications
 
 所有脚本通过 `notify.py` 统一发送通知，支持以下 **23** 种渠道：
