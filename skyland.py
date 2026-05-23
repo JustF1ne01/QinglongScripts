@@ -95,7 +95,8 @@ def _des_encrypt(obj: dict) -> dict:
             result[key] = value
             continue
         if rule["is_encrypt"] == 1:
-            cipher = Cipher(TripleDES(rule["key"].encode("utf-8")), ECB())
+            key = rule["key"].encode("utf-8")
+            cipher = Cipher(TripleDES(key * 3), ECB())
             data = str(value).encode("utf-8")
             data += b"\x00" * (8 - len(data) % 8)
             encrypted = cipher.encryptor().update(data)
