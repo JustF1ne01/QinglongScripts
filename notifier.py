@@ -96,26 +96,42 @@ def send(title: str, content: str) -> None:
 
 
 def send_file(title: str, content: str, file_path: str) -> None:
-    """发送带附件的通知（Telegram / SMTP）"""
+    """发送带附件的通知（Telegram / SMTP 发文件，其余通道发文本）"""
     hitokoto = _fetch_hitokoto()
-    full_content = content + hitokoto if hitokoto else content
+    full_text = f"{title}\n\n{content}"
+    if hitokoto:
+        full_text += hitokoto
 
-    any_success = False
+    # 文件通道
+    file_ok = False
     try:
-        any_success = _send_telegram_file(title, full_content, file_path) or any_success
+        file_ok = _send_telegram_file(title, content, file_path)
     except Exception:
         pass
     try:
-        any_success = _send_smtp_file(title, full_content, file_path) or any_success
+        file_ok = _send_smtp_file(title, content, file_path) or file_ok
     except Exception:
         pass
 
-    # 文本通道也收到消息
-    send(title, full_content)
-    any_success = True  # send() handles fallback
+    # 文本通道（跳过已发文件的 Telegram 和 SMTP）
+    skip = {_send_telegram_text, _send_smtp}
+    text_channels = [c for c in [
+        _send_bark, _send_console, _send_dingtalk, _send_feishu, _send_gocqhttp,
+        _send_gotify, _send_igot, _send_serverchan, _send_pushdeer, _send_synology_chat,
+        _send_pushplus, _send_weplusbot, _send_qmsg, _send_qywx_app, _send_qywx_bot,
+        _send_aibotk, _send_pushme, _send_chronocat, _send_webhook, _send_ntfy, _send_wxpusher,
+    ] if c not in skip]
 
-    if not any_success:
-        print(f"\n{title}\n\n{full_content}\n")
+    any_text = False
+    for chan in text_channels:
+        try:
+            if chan(title, content):
+                any_text = True
+        except Exception:
+            pass
+
+    if not file_ok and not any_text:
+        print(f"\n{full_text}\n")
 
 
 # ==================== 1. Bark ====================
