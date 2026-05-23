@@ -3,3 +3,4 @@ Password
 *.json
 __pycache__
 .env
+*.har
