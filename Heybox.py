@@ -143,37 +143,45 @@ def login(session: requests.Session) -> tuple:
         except Exception:
             pass
 
+    login_url = f"{_API_BASE}/account/login/?{_login_params()}"
+    log_info(f"URL: {login_url[:150]}...")
+
     for idx, key_str in enumerate(_RSA_CANDIDATES):
-        pub = f"-----BEGIN PUBLIC KEY-----\n{key_str}\n-----END PUBLIC KEY-----"
+        # PEM 格式：64字符换行
+        wrapped_key = "\n".join(key_str[i:i+64] for i in range(0, len(key_str), 64))
+        pub = f"-----BEGIN PUBLIC KEY-----\n{wrapped_key}\n-----END PUBLIC KEY-----"
         try:
             key = serialization.load_pem_public_key(pub.encode())
-        except Exception:
-            log_warning(f"Key {idx} 加载失败")
+        except Exception as e:
+            log_warning(f"Key {idx} 加载失败: {e}")
             continue
 
         enc_phone = key.encrypt(HEYBOX_PHONE.encode(), padding.PKCS1v15())
         enc_pwd = key.encrypt(HEYBOX_PASSWORD.encode(), padding.PKCS1v15())
-        b64_phone = "\n".join(base64.b64encode(enc_phone).decode()[i:i+64] for i in range(0, len(base64.b64encode(enc_phone).decode()), 64))
-        b64_pwd = "\n".join(base64.b64encode(enc_pwd).decode()[i:i+64] for i in range(0, len(base64.b64encode(enc_pwd).decode()), 64))
+        b64_phone = base64.b64encode(enc_phone).decode()
+        b64_pwd = base64.b64encode(enc_pwd).decode()
+        # JSEncrypt 每64字符换行
+        b64_phone_w = "\n".join(b64_phone[i:i+64] for i in range(0, len(b64_phone), 64))
+        b64_pwd_w = "\n".join(b64_pwd[i:i+64] for i in range(0, len(b64_pwd), 64))
 
-        body = f"phone_num={quote(b64_phone, safe='')}&pwd={quote(b64_pwd, safe='')}"
-        url = f"{_API_BASE}/account/login/?{_login_params()}"
-
-        log_info(f"尝试 Key {idx}...")
-        log_info(f"  phone(前30): {quote(b64_phone, safe='')[:30]}")
+        body = f"phone_num={quote(b64_phone_w, safe='')}&pwd={quote(b64_pwd_w, safe='')}"
+        log_info(f"尝试 Key {idx} (body长度={len(body)})...")
         try:
-            resp = session.post(url, data=body,
+            resp = session.post(login_url, data=body,
                                headers={
                                    "Content-Type": "application/x-www-form-urlencoded",
                                    "Referer": "http://api.maxjia.com/",
                                },
-                               timeout=15).json()
+                               timeout=15)
+            raw_text = resp.text
+            resp_json = resp.json()
         except Exception as e:
             log_warning(f"Key {idx} 请求异常: {e}")
             continue
 
-        msg = resp.get("msg", "")
-        log_info(f"Key {idx} 响应: {msg}")
+        msg = resp_json.get("msg", "")
+        log_info(f"Key {idx} 状态={resp.status_code}, msg={msg}")
+        log_info(f"  响应体: {raw_text[:300]}")
 
         if resp.get("status") == "ok":
             _RSA_KEY = key
