@@ -27,17 +27,22 @@ HEYBOX_COOKIE = os.environ.get("HEYBOX_COOKIE", "")
 HEYBOX_PHONE = os.environ.get("HEYBOX_PHONE", "")
 HEYBOX_PASSWORD = os.environ.get("HEYBOX_PASSWORD", "")
 
-# 从 APK (classes2.dex, LogHkLoginByIntent) 提取
-RSA_PUBLIC_KEY = """-----BEGIN PUBLIC KEY-----
-MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQC5se07mkN71qsSJHjZ2Z0+Z+4L
-lLvf2sz7Md38VAa3EmAOvI7vZp3hbAxicL724ylcmisTPtZQhT/9C+25AELqy9PN
-9JmzKpwoVTUoJvxG4BoyT49+gGVl6s6zo1byNoHUzTfkmRfmC9MC53HvG8GwKP5
-xtcdptFjAIcgIR7oAWQIDAQAB
------END PUBLIC KEY-----"""
+# 从 APK 提取的全部 1024-bit RSA 公钥（逐个尝试直到登录成功）
+_RSA_CANDIDATES = [
+    # Key 0: classes2.dex @ 957327 (LogHkLoginByIntent)
+    "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQC5se07mkN71qsSJHjZ2Z0+Z+4LlLvf2sz7Md38VAa3EmAOvI7vZp3hbAxicL724ylcmisTPtZQhT/9C+25AELqy9PN9JmzKpwoVTUoJvxG4BoyT49+gGVl6s6zo1byNoHUzTfkmRfmC9MC53HvG8GwKP5xtcdptFjAIcgIR7oAWQIDAQAB",
+    # Key 1: classes2.dex @ 957546
+    "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDmKZL1TFWMfxggbo4qfXM5WsD0B3pUTjLCca/k/ESWqujQ2xTpESjUabHMEdEPnwmDtkXvIHJ14irPGulaXv6prpyPpt61dJqRYHvSmXr2x+HETNAIi0AHi+c/tE8LAKyHX2y4Zjv7iw48H",
+    # Key 2: classes12.dex @ 1810753
+    "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQC8UA4F9zfelx7qoRjTXEViE8WT60FBHJVl3T3/B+Nmljxiqa7H6GtOnmLFfpTVT+QdgBhxsU097DEBQhX8Z/9rVMp825T10jLefXly84/6p6B9Q0rNYX37zoWD5QT+5JWVgERX9P2o7fCXtlplLjv3dDXbzLdlWwdl53vtnAIidQIDAQAB",
+    # Key 3: classes12.dex @ 1810972
+    "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQC9PkwyShdEmTYQE+KFGBlkzQLIzZlsHsltb6ROW96w18U+YTBcoQ6cDxKMHc1c1fbqHM2b2LRrC9q78ZaC4MeYXzFRl2MYU3d+0Qz++xiv31Y+idvmHUN2MXrmo5cfvuwI65t6F883fehNs",
+    # Key 4: classes13.dex @ 2081747
+    "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDENksAVqDoz5SMCZq0bsZwE+I3NjrANyTTwUVSf1+ec1PfPB4tiocEpYJFCYju9MIbawR8ivECbUWjpffZq5QllJg+19CB7V5rYGcEnb/M7CS3lFF2sNcRFJUtXUUAqyR3/l7PmpxTwObZ4DLG258dhE2vFlVGXjnuLs+FI2hg4QIDAQAB",
+]
 
-API_BASE = "https://api.xiaoheihe.cn"
-TZ_BEIJING = timezone(timedelta(hours=8))
-_RSA_KEY = serialization.load_pem_public_key(RSA_PUBLIC_KEY.encode())
+_API_BASE = "https://api.xiaoheihe.cn"
+_TZ_BEIJING = timezone(timedelta(hours=8))
 
 # 从 HAR 成功请求复用的设备参数
 _IMEI = "a9381821da647661"
@@ -63,6 +68,8 @@ def _extract_cookie(key: str, default: str = "") -> str:
 
 def _rsa_encrypt(plain: str) -> str:
     """RSA PKCS1v15 → base64 64字符换行 → URL 编码"""
+    if _RSA_KEY is None:
+        raise RuntimeError("no valid RSA key")
     enc = _RSA_KEY.encrypt(plain.encode(), padding.PKCS1v15())
     b64 = base64.b64encode(enc).decode()
     wrapped = "\n".join(b64[i:i+64] for i in range(0, len(b64), 64))
@@ -90,7 +97,7 @@ def create_session(heybox_id: str = "30182259") -> requests.Session:
 
 
 def _common_params(heybox_id: str) -> str:
-    ts = int(datetime.now(TZ_BEIJING).timestamp())
+    ts = int(datetime.now(_TZ_BEIJING).timestamp())
     return (
         f"heybox_id={heybox_id}&imei={_IMEI}&device_info={_DEVICE_INFO}"
         f"&nonce={_rand_str()}&hkey={_rand_hex()}&_rnd=14:{_rand_hex()}"
@@ -101,7 +108,7 @@ def _common_params(heybox_id: str) -> str:
 
 
 def _login_params() -> str:
-    ts = int(datetime.now(TZ_BEIJING).timestamp())
+    ts = int(datetime.now(_TZ_BEIJING).timestamp())
     return (
         f"is_new_device=0&heybox_id=-1&imei={_IMEI}&device_info={_DEVICE_INFO}"
         f"&nonce={_rand_str()}&hkey={_rand_hex()}&_rnd=14:{_rand_hex()}"
@@ -114,7 +121,7 @@ def _login_params() -> str:
 
 def api_get(session: requests.Session, path: str, heybox_id: str) -> dict:
     try:
-        return session.get(f"{API_BASE}{path}?{_common_params(heybox_id)}", timeout=15).json()
+        return session.get(f"{_API_BASE}{path}?{_common_params(heybox_id)}", timeout=15).json()
     except Exception as e:
         log_error(f"GET {path}: {e}")
         return {}
@@ -122,31 +129,58 @@ def api_get(session: requests.Session, path: str, heybox_id: str) -> dict:
 
 def login(session: requests.Session) -> tuple:
     """返回 (heybox_id, nickname) 或 (None, 错误)"""
+    global _RSA_KEY
+
     if not HEYBOX_PHONE or not HEYBOX_PASSWORD:
         return None, "未配置手机号/密码"
 
-    log_info("正在登录...")
-    body = f"phone_num={_rsa_encrypt(HEYBOX_PHONE)}&pwd={_rsa_encrypt(HEYBOX_PASSWORD)}"
-    url = f"{API_BASE}/account/login/?{_login_params()}"
-    try:
-        resp = session.post(url, data=body,
-                           headers={"Content-Type": "application/x-www-form-urlencoded"},
-                           timeout=15).json()
-    except Exception as e:
-        return None, str(e)
+    for idx, key_str in enumerate(_RSA_CANDIDATES):
+        pub = f"-----BEGIN PUBLIC KEY-----\n{key_str}\n-----END PUBLIC KEY-----"
+        try:
+            key = serialization.load_pem_public_key(pub.encode())
+        except Exception:
+            log_warning(f"Key {idx} 加载失败")
+            continue
 
-    if resp.get("status") != "ok":
-        return None, resp.get("msg", "未知错误")
+        enc_phone = key.encrypt(HEYBOX_PHONE.encode(), padding.PKCS1v15())
+        enc_pwd = key.encrypt(HEYBOX_PASSWORD.encode(), padding.PKCS1v15())
+        b64_phone = "\n".join(base64.b64encode(enc_phone).decode()[i:i+64] for i in range(0, len(base64.b64encode(enc_phone).decode()), 64))
+        b64_pwd = "\n".join(base64.b64encode(enc_pwd).decode()[i:i+64] for i in range(0, len(base64.b64encode(enc_pwd).decode()), 64))
 
-    p = resp.get("result", {}).get("profile", {})
-    return p.get("heybox_id", ""), p.get("nickname", "未知")
+        body = f"phone_num={quote(b64_phone, safe='')}&pwd={quote(b64_pwd, safe='')}"
+        url = f"{_API_BASE}/account/login/?{_login_params()}"
+
+        log_info(f"尝试 Key {idx}...")
+        log_info(f"  phone(前30): {quote(b64_phone, safe='')[:30]}")
+        try:
+            resp = session.post(url, data=body,
+                               headers={"Content-Type": "application/x-www-form-urlencoded"},
+                               timeout=15).json()
+        except Exception as e:
+            log_warning(f"Key {idx} 请求异常: {e}")
+            continue
+
+        msg = resp.get("msg", "")
+        log_info(f"Key {idx} 响应: {msg}")
+
+        if resp.get("status") == "ok":
+            _RSA_KEY = key
+            log_success(f"Key {idx} 登录成功!")
+            p = resp.get("result", {}).get("profile", {})
+            return p.get("heybox_id", ""), p.get("nickname", "未知")
+
+        if "密码" in msg:
+            log_warning(f"Key {idx} 密码错误，key 本身可能正确")
+            # 继续尝试其他 key——错误的 key 也会解出乱码导致"验证参数错误"
+
+    return None, "所有 Key 均登录失败"
 
 
 def get_sign_status(session: requests.Session, hid: str) -> bool:
     r = api_get(session, "/task/sign_list/", hid)
     if r.get("status") != "ok":
         return False
-    today_ts = int(datetime.now(TZ_BEIJING).replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
+    today_ts = int(datetime.now(_TZ_BEIJING).replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
     for item in r.get("result", {}).get("sign_list", []):
         if item["date"] == today_ts:
             return item.get("is_sign", False)
@@ -193,15 +227,16 @@ def build_report(nickname: str, state: str, task_info: dict) -> str:
 
 
 def main():
+    global _RSA_KEY
+    _RSA_KEY = None
+
     if not HEYBOX_PHONE and not HEYBOX_COOKIE:
         notify_send("小黑盒签到 错误", "❌ 请配置 HEYBOX_PHONE + HEYBOX_PASSWORD")
         return
 
-    # 确定 heybox_id
     hid = _extract_cookie("heybox_id", "") or "30182259"
     session = create_session(hid)
 
-    # 有 cookie 先验证
     nickname = "未知"
     if HEYBOX_COOKIE:
         nickname = get_nickname(session, hid)
