@@ -26,11 +26,9 @@ from utils import log_info, log_success, log_warning, log_error, beijing_time_st
 from notifier import send as notify_send
 
 # ==================== 用户配置 ====================
-HEYBOX_COOKIE = os.environ.get("HEYBOX_COOKIE", "")
-HEYBOX_PHONE = os.environ.get("HEYBOX_PHONE", "")
-HEYBOX_PASSWORD = os.environ.get("HEYBOX_PASSWORD", "")
+HEYBOX_COOKIE = os.environ.get("HEYBOX_COOKIE", "")  # 从 App/Web 抓包获取
 
-# 从 APK (classes2.dex, LogHkLoginByIntent) 提取的全部 RSA 1024-bit 候选公钥
+# 从 APK 提取的全部 RSA 1024-bit 候选公钥（登录用，暂不可用）
 _RSA_CANDIDATES = [
     "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQC5se07mkN71qsSJHjZ2Z0+Z+4LlLvf2sz7Md38VAa3EmAOvI7vZp3hbAxicL724ylcmisTPtZQhT/9C+25AELqy9PN9JmzKpwoVTUoJvxG4BoyT49+gGVl6s6zo1byNoHUzTfkmRfmC9MC53HvG8GwKP5xtcdptFjAIcgIR7oAWQIDAQAB",
     "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDmKZL1TFWMfxggbo4qfXM5WsD0B3pUTjLCca/k/ESWqujQ2xTpESjUabHMEdEPnwmDtkXvIHJ14irPGulaXv6prpyPpt61dJqRYHvSmXr2x+HETNAIi0AHi+c/tE8LAKyHX2y4Zjv7iw48HidKv5+omug77Z/yTJqzhDvkkBteHQIDAQAB",
@@ -276,46 +274,24 @@ def build_report(nickname: str, state: str, task_info: dict) -> str:
 
 
 def main():
-    global _RSA_KEY
-    _RSA_KEY = None
-
-    if not HEYBOX_PHONE and not HEYBOX_COOKIE:
-        notify_send("小黑盒签到 错误", "❌ 请配置 HEYBOX_PHONE + HEYBOX_PASSWORD")
+    if not HEYBOX_COOKIE:
+        notify_send("小黑盒签到 错误", "❌ 请配置 HEYBOX_COOKIE")
         return
 
     hid = "30182259"
-    for item in (HEYBOX_COOKIE or "").split(";"):
+    for item in HEYBOX_COOKIE.split(";"):
         item = item.strip()
         if "=" in item and item.split("=", 1)[0].strip() == "heybox_id":
             hid = item.split("=", 1)[1].strip()
 
     session = create_session(hid)
-    nickname = "未知"
-
-    if HEYBOX_COOKIE:
-        nickname = get_nickname(session, hid)
-        if nickname == "未知":
-            log_warning("Cookie 过期，尝试登录...")
-            hid, nickname = login(session) or (None, None)
-            if not hid:
-                notify_send("小黑盒签到 错误", "❌ Cookie 过期且登录失败")
-                return
-    else:
-        hid, nickname = login(session) or (None, None)
-        if not hid:
-            notify_send("小黑盒签到 错误", f"❌ 登录失败: {nickname}")
-            return
+    nickname = get_nickname(session, hid)
+    if nickname == "未知":
+        notify_send("小黑盒签到 错误", "❌ Cookie 无效，请重新抓包获取")
+        return
 
     log_info(f"账号: {nickname}")
-
     state = "ignore" if get_sign_status(session, hid) else do_sign(session, hid)
-    if state == "fail":
-        log_info("签到失败，重新登录后重试...")
-        new_hid, new_nick = login(session) or (None, None)
-        if new_hid:
-            hid, nickname = new_hid, new_nick
-            state = "ignore" if get_sign_status(session, hid) else do_sign(session, hid)
-
     ti = get_task_info(session, hid) or {}
     notify_send("小黑盒 签到报告", build_report(nickname, state, ti))
     log_success("推送完成")
