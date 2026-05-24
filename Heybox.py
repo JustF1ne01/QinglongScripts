@@ -3,11 +3,14 @@
 cron: 0 8 * * *
 new Env("小黑盒每日签到")
 小黑盒 (Heybox) 每日签到脚本
-- 仅需手机号+密码即可运行（RSA 加密登录，无需抓包）
-- 自动获取/刷新 Cookie，执行每日签到
+- 仅需手机号+密码（RSA 加密登录，无需抓包）
+- 自动计算 hkey 签名（算法来自 xhhBackCrack）
+- 执行每日签到 (task/sign_v3/sign)
 """
 
 import base64
+import hashlib
+import math
 import os
 import random
 import string
@@ -27,60 +30,166 @@ HEYBOX_COOKIE = os.environ.get("HEYBOX_COOKIE", "")
 HEYBOX_PHONE = os.environ.get("HEYBOX_PHONE", "")
 HEYBOX_PASSWORD = os.environ.get("HEYBOX_PASSWORD", "")
 
-# 从 APK 提取的全部 1024-bit RSA 公钥（逐个尝试直到登录成功）
+# 从 APK (classes2.dex, LogHkLoginByIntent) 提取的全部 RSA 1024-bit 候选公钥
 _RSA_CANDIDATES = [
-    # Key 0: classes2.dex @ 957327 (LogHkLoginByIntent)
     "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQC5se07mkN71qsSJHjZ2Z0+Z+4LlLvf2sz7Md38VAa3EmAOvI7vZp3hbAxicL724ylcmisTPtZQhT/9C+25AELqy9PN9JmzKpwoVTUoJvxG4BoyT49+gGVl6s6zo1byNoHUzTfkmRfmC9MC53HvG8GwKP5xtcdptFjAIcgIR7oAWQIDAQAB",
-    # Key 1: classes2.dex @ 957546
-    "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDmKZL1TFWMfxggbo4qfXM5WsD0B3pUTjLCca/k/ESWqujQ2xTpESjUabHMEdEPnwmDtkXvIHJ14irPGulaXv6prpyPpt61dJqRYHvSmXr2x+HETNAIi0AHi+c/tE8LAKyHX2y4Zjv7iw48H",
-    # Key 2: classes12.dex @ 1810753
+    "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDmKZL1TFWMfxggbo4qfXM5WsD0B3pUTjLCca/k/ESWqujQ2xTpESjUabHMEdEPnwmDtkXvIHJ14irPGulaXv6prpyPpt61dJqRYHvSmXr2x+HETNAIi0AHi+c/tE8LAKyHX2y4Zjv7iw48HidKv5+omug77Z/yTJqzhDvkkBteHQIDAQAB",
     "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQC8UA4F9zfelx7qoRjTXEViE8WT60FBHJVl3T3/B+Nmljxiqa7H6GtOnmLFfpTVT+QdgBhxsU097DEBQhX8Z/9rVMp825T10jLefXly84/6p6B9Q0rNYX37zoWD5QT+5JWVgERX9P2o7fCXtlplLjv3dDXbzLdlWwdl53vtnAIidQIDAQAB",
-    # Key 3: classes12.dex @ 1810972
-    "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQC9PkwyShdEmTYQE+KFGBlkzQLIzZlsHsltb6ROW96w18U+YTBcoQ6cDxKMHc1c1fbqHM2b2LRrC9q78ZaC4MeYXzFRl2MYU3d+0Qz++xiv31Y+idvmHUN2MXrmo5cfvuwI65t6F883fehNs",
-    # Key 4: classes13.dex @ 2081747
+    "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQC9PkwyShdEmTYQE+KFGBlkzQLIzZlsHsltb6ROW96w18U+YTBcoQ6cDxKMHc1c1fbqHM2b2LRrC9q78ZaC4MeYXzFRl2MYU3d+0Qz++xiv31Y+idvmHUN2MXrmo5cfvuwI65t6F883fehNstbdCW2QFDS3jXkrY4DinRf4VGokdwIDAQAB",
     "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDENksAVqDoz5SMCZq0bsZwE+I3NjrANyTTwUVSf1+ec1PfPB4tiocEpYJFCYju9MIbawR8ivECbUWjpffZq5QllJg+19CB7V5rYGcEnb/M7CS3lFF2sNcRFJUtXUUAqyR3/l7PmpxTwObZ4DLG258dhE2vFlVGXjnuLs+FI2hg4QIDAQAB",
 ]
+_RSA_KEY = None  # 登录成功后锁定
 
 _API_BASE = "https://api.xiaoheihe.cn"
 _TZ_BEIJING = timezone(timedelta(hours=8))
 
-# 从 HAR 成功请求复用的设备参数
+_UA = "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2272.118 Safari/537.36 ApiMaxJia/1.0"
 _IMEI = "a9381821da647661"
 _DEVICE_INFO = "25102RKBEC"
-_UA = "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2272.118 Safari/537.36 ApiMaxJia/1.0"
+
+# ==================== hkey 签名算法 (from xhhBackCrack) ====================
+_CHARSET = "AB45STUVWZEFGJ6CH01D237IXYPQRKLMN89"
 
 
-def _rand_str(n: int = 32) -> str:
-    return "".join(random.choice(string.ascii_letters + string.digits) for _ in range(n))
+def _Vm(e):
+    return (255 & ((e << 1) ^ 27)) if e & 128 else e << 1
 
 
-def _rand_hex(n: int = 8) -> str:
-    return "".join(random.choice("0123456789ABCDEF") for _ in range(n))
+def _qm(e):
+    return _Vm(e) ^ e
 
 
-def _extract_cookie(key: str, default: str = "") -> str:
-    for item in (HEYBOX_COOKIE or "").split(";"):
-        item = item.strip()
-        if "=" in item and item.split("=", 1)[0].strip() == key:
-            return item.split("=", 1)[1].strip()
-    return default
+def _dollar_m(e):
+    return _qm(_Vm(e))
 
 
-def _rsa_encrypt(plain: str) -> str:
-    """RSA PKCS1v15 → base64 64字符换行 → URL 编码"""
-    if _RSA_KEY is None:
-        raise RuntimeError("no valid RSA key")
-    enc = _RSA_KEY.encrypt(plain.encode(), padding.PKCS1v15())
-    b64 = base64.b64encode(enc).decode()
-    wrapped = "\n".join(b64[i:i+64] for i in range(0, len(b64), 64))
-    return quote(wrapped, safe="")
+def _Ym(e):
+    return _dollar_m(_qm(_Vm(e)))
 
 
-def _make_pkey(heybox_id: str) -> str:
-    ts = time.time()
-    raw = f"{ts:.4f}.{random.randint(10,99)}_{heybox_id}{_rand_str(12)}"
-    return base64.b64encode(raw.encode()).decode().rstrip("=")
+def _Gm(e):
+    return _Ym(e) ^ _dollar_m(e) ^ _qm(e)
 
+
+def _Km_full(e_arr):
+    e = list(e_arr)
+    t = [0, 0, 0, 0]
+    t[0] = _Gm(e[0]) ^ _Ym(e[1]) ^ _dollar_m(e[2]) ^ _qm(e[3])
+    t[1] = _qm(e[0]) ^ _Gm(e[1]) ^ _Ym(e[2]) ^ _dollar_m(e[3])
+    t[2] = _dollar_m(e[0]) ^ _qm(e[1]) ^ _Gm(e[2]) ^ _Ym(e[3])
+    t[3] = _Ym(e[0]) ^ _dollar_m(e[1]) ^ _qm(e[2]) ^ _Gm(e[3])
+    e[0], e[1], e[2], e[3] = t[0], t[1], t[2], t[3]
+    return e
+
+
+def _av(e, t, n):
+    i = t[:n]  # n < 0 means slice to end-n
+    r = ""
+    for c in e:
+        r += i[ord(c) % len(i)]
+    return r
+
+
+def _sv(e, t):
+    r = ""
+    for c in e:
+        r += t[ord(c) % len(t)]
+    return r
+
+
+def _compute_hkey(path: str, timestamp: int, nonce: str) -> str:
+    parts = [p for p in path.split("/") if p]
+    normalized = "/" + "/".join(parts) + "/"
+    comp1 = _av(str(timestamp), _CHARSET, -2)
+    comp2 = _sv(normalized, _CHARSET)
+    comp3 = _sv(nonce, _CHARSET)
+    comps = [comp1, comp2, comp3]
+    max_len = max(len(c) for c in comps)
+    interleaved = ""
+    for k in range(max_len):
+        for c in comps:
+            if k < len(c):
+                interleaved += c[k]
+    i_str = interleaved[:20]
+    md5_hash = hashlib.md5(i_str.encode()).hexdigest()
+    prefix = _av(md5_hash[:5], _CHARSET, -4)
+    suffix_input = [ord(c) for c in md5_hash[-6:]]
+    km_out = _Km_full(suffix_input)
+    checksum = str(sum(km_out) % 100).zfill(2)
+    return prefix + checksum
+
+
+def _gen_nonce() -> str:
+    raw = str(int(time.time() * 1000)) + str(random.random())
+    return hashlib.md5(raw.encode()).hexdigest().upper()
+
+
+def _gen_timestamp() -> int:
+    return int(time.time())
+
+
+def _build_url(path: str, heybox_id: str, extra_params: dict = None) -> str:
+    """构建带 hkey 签名的完整 URL"""
+    ts = _gen_timestamp()
+    nonce = _gen_nonce()
+    hkey = _compute_hkey(path, ts, nonce)
+
+    params = {
+        "heybox_id": heybox_id,
+        "imei": _IMEI,
+        "device_info": _DEVICE_INFO,
+        "nonce": nonce,
+        "hkey": hkey,
+        "_rnd": f"14:{''.join(random.choice('0123456789ABCDEF') for _ in range(8))}",
+        "os_type": "Android",
+        "x_os_type": "Android",
+        "x_client_type": "mobile",
+        "os_version": "16",
+        "version": "1.3.382",
+        "build": "1076",
+        "_time": str(ts),
+        "channel": "heybox_yingyongbao",
+        "x_app": "heybox",
+    }
+    if extra_params:
+        params.update(extra_params)
+
+    qs = "&".join(f"{k}={v}" for k, v in params.items())
+    return f"{_API_BASE}{path}?{qs}"
+
+
+def _build_login_url() -> str:
+    """构建登录专用 URL（heybox_id=-1, 含 is_new_device/dw/time_zone）"""
+    ts = _gen_timestamp()
+    nonce = _gen_nonce()
+    path = "/account/login/"
+    hkey = _compute_hkey(path, ts, nonce)
+
+    params = {
+        "is_new_device": "0",
+        "heybox_id": "-1",
+        "imei": _IMEI,
+        "device_info": _DEVICE_INFO,
+        "nonce": nonce,
+        "hkey": hkey,
+        "_rnd": f"14:{''.join(random.choice('0123456789ABCDEF') for _ in range(8))}",
+        "os_type": "Android",
+        "x_os_type": "Android",
+        "x_client_type": "mobile",
+        "os_version": "16",
+        "version": "1.3.382",
+        "build": "1076",
+        "_time": str(ts),
+        "dw": "400",
+        "channel": "heybox_yingyongbao",
+        "x_app": "heybox",
+        "time_zone": "Asia/Shanghai",
+    }
+    qs = "&".join(f"{k}={v}" for k, v in params.items())
+    return f"{_API_BASE}{path}?{qs}"
+
+
+# ==================== 核心功能 ====================
 
 def create_session(heybox_id: str = "30182259") -> requests.Session:
     s = requests.Session()
@@ -94,104 +203,58 @@ def create_session(heybox_id: str = "30182259") -> requests.Session:
     return s
 
 
-def _common_params(heybox_id: str) -> str:
-    ts = int(datetime.now(_TZ_BEIJING).timestamp())
-    return (
-        f"heybox_id={heybox_id}&imei={_IMEI}&device_info={_DEVICE_INFO}"
-        f"&nonce={_rand_str()}&hkey={_rand_hex()}&_rnd=14:{_rand_hex()}"
-        f"&os_type=Android&x_os_type=Android&x_client_type=mobile"
-        f"&os_version=16&version=1.3.382&build=1076"
-        f"&_time={ts}&channel=heybox_yingyongbao&x_app=heybox"
-    )
+def _rsa_encrypt(key, plain: str) -> str:
+    enc = key.encrypt(plain.encode(), padding.PKCS1v15())
+    b64 = base64.b64encode(enc).decode()
+    wrapped = "\n".join(b64[i:i + 64] for i in range(0, len(b64), 64))
+    return quote(wrapped, safe="")
 
 
-def _login_params() -> str:
-    ts = int(datetime.now(_TZ_BEIJING).timestamp())
-    return (
-        f"is_new_device=0&heybox_id=-1&imei={_IMEI}&device_info={_DEVICE_INFO}"
-        f"&nonce={_rand_str()}&hkey={_rand_hex()}&_rnd=14:{_rand_hex()}"
-        f"&os_type=Android&x_os_type=Android&x_client_type=mobile"
-        f"&os_version=16&version=1.3.382&build=1076"
-        f"&_time={ts}&dw=400&channel=heybox_yingyongbao&x_app=heybox"
-        f"&time_zone=Asia/Shanghai"
-    )
-
-
-def api_get(session: requests.Session, path: str, heybox_id: str) -> dict:
+def api_get(session: requests.Session, path: str, heybox_id: str, extra: dict = None) -> dict:
+    url = _build_url(path, heybox_id, extra)
     try:
-        return session.get(f"{_API_BASE}{path}?{_common_params(heybox_id)}", timeout=15).json()
+        return session.get(url, timeout=15).json()
     except Exception as e:
         log_error(f"GET {path}: {e}")
         return {}
 
 
 def login(session: requests.Session) -> tuple:
-    """返回 (heybox_id, nickname) 或 (None, 错误)"""
+    """用 RSA 加密登录，返回 (heybox_id, nickname)"""
     global _RSA_KEY
-
     if not HEYBOX_PHONE or not HEYBOX_PASSWORD:
         return None, "未配置手机号/密码"
 
-    # 先访问首页建立初始 session（获取服务器下发的 tokenid）
-    if not HEYBOX_COOKIE:
-        log_info("建立初始会话...")
-        try:
-            seed_resp = session.get(f"{_API_BASE}/account/login/?{_login_params()}",
-                                    headers={"Referer": "http://api.maxjia.com/"},
-                                    timeout=15)
-            log_info(f"会话初始化: {len(session.cookies)} 个 cookie")
-        except Exception:
-            pass
-
-    login_url = f"{_API_BASE}/account/login/?{_login_params()}"
-    log_info(f"URL: {login_url[:150]}...")
-
     for idx, key_str in enumerate(_RSA_CANDIDATES):
-        # PEM 格式：64字符换行
-        wrapped_key = "\n".join(key_str[i:i+64] for i in range(0, len(key_str), 64))
-        pub = f"-----BEGIN PUBLIC KEY-----\n{wrapped_key}\n-----END PUBLIC KEY-----"
+        wrapped = "\n".join(key_str[i:i + 64] for i in range(0, len(key_str), 64))
+        pem = f"-----BEGIN PUBLIC KEY-----\n{wrapped}\n-----END PUBLIC KEY-----"
         try:
-            key = serialization.load_pem_public_key(pub.encode())
+            key = serialization.load_pem_public_key(pem.encode())
         except Exception as e:
             log_warning(f"Key {idx} 加载失败: {e}")
             continue
 
-        enc_phone = key.encrypt(HEYBOX_PHONE.encode(), padding.PKCS1v15())
-        enc_pwd = key.encrypt(HEYBOX_PASSWORD.encode(), padding.PKCS1v15())
-        b64_phone = base64.b64encode(enc_phone).decode()
-        b64_pwd = base64.b64encode(enc_pwd).decode()
-        # JSEncrypt 每64字符换行
-        b64_phone_w = "\n".join(b64_phone[i:i+64] for i in range(0, len(b64_phone), 64))
-        b64_pwd_w = "\n".join(b64_pwd[i:i+64] for i in range(0, len(b64_pwd), 64))
-
-        body = f"phone_num={quote(b64_phone_w, safe='')}&pwd={quote(b64_pwd_w, safe='')}"
-        log_info(f"尝试 Key {idx} (body长度={len(body)})...")
+        body = f"phone_num={_rsa_encrypt(key, HEYBOX_PHONE)}&pwd={_rsa_encrypt(key, HEYBOX_PASSWORD)}"
+        url = _build_login_url()
+        log_info(f"尝试 Key {idx}...")
         try:
-            resp = session.post(login_url, data=body,
+            resp = session.post(url, data=body,
                                headers={
                                    "Content-Type": "application/x-www-form-urlencoded",
                                    "Referer": "http://api.maxjia.com/",
                                },
-                               timeout=15)
-            raw_text = resp.text
-            resp_json = resp.json()
+                               timeout=15).json()
         except Exception as e:
             log_warning(f"Key {idx} 请求异常: {e}")
             continue
 
-        msg = resp_json.get("msg", "")
-        log_info(f"Key {idx} 状态={resp.status_code}, msg={msg}")
-        log_info(f"  响应体: {raw_text[:300]}")
-
+        msg = resp.get("msg", "")
+        log_info(f"Key {idx} 响应: {msg}")
         if resp.get("status") == "ok":
             _RSA_KEY = key
             log_success(f"Key {idx} 登录成功!")
             p = resp.get("result", {}).get("profile", {})
             return p.get("heybox_id", ""), p.get("nickname", "未知")
-
-        if "密码" in msg:
-            log_warning(f"Key {idx} 密码错误，key 本身可能正确")
-            # 继续尝试其他 key——错误的 key 也会解出乱码导致"验证参数错误"
 
     return None, "所有 Key 均登录失败"
 
@@ -254,10 +317,15 @@ def main():
         notify_send("小黑盒签到 错误", "❌ 请配置 HEYBOX_PHONE + HEYBOX_PASSWORD")
         return
 
-    hid = _extract_cookie("heybox_id", "") or "30182259"
-    session = create_session(hid)
+    hid = "30182259"
+    for item in (HEYBOX_COOKIE or "").split(";"):
+        item = item.strip()
+        if "=" in item and item.split("=", 1)[0].strip() == "heybox_id":
+            hid = item.split("=", 1)[1].strip()
 
+    session = create_session(hid)
     nickname = "未知"
+
     if HEYBOX_COOKIE:
         nickname = get_nickname(session, hid)
         if nickname == "未知":
