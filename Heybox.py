@@ -109,17 +109,21 @@ def get_sign_status(session: requests.Session) -> tuple:
     return is_signed, sign_list
 
 
-def do_sign(session: requests.Session) -> bool:
-    """执行签到，返回是否成功。尝试多个可能的签到入口"""
-    # 方式1: 获取任务列表（有时会自动触发签到）
-    result = api_get(session, "/task/list_v2/")
-    if result.get("status") == "ok":
-        log_info("已请求任务列表（触发签到）")
+def do_sign(session: requests.Session) -> str:
+    """执行签到 (v3 API)，返回 state: success/ignore/fail"""
+    result = api_get(session, "/task/sign_v3/sign")
+    if result.get("status") != "ok":
+        log_error(f"签到请求失败: {result}")
+        return "fail"
 
-    # 方式2: 直接签到接口
-    result2 = api_get(session, "/task/sign/")
-    log_info(f"签到接口响应: {result2.get('status', result2.get('msg', 'unknown'))}")
-    return result2.get("status") == "ok"
+    state = result.get("result", {}).get("state", "fail")
+    state_map = {
+        "success": "签到成功 ✅",
+        "ignore": "今日已签到，无需重复 ⚠️",
+        "fail": "签到失败 ❌",
+    }
+    log_info(f"签到结果: {state_map.get(state, state)}")
+    return state
 
 
 def get_task_list(session: requests.Session) -> dict:
@@ -140,12 +144,11 @@ def get_account_info(session: requests.Session) -> str:
     return "未知"
 
 
-def build_report(nickname: str, is_signed: bool,
-                 task_info: dict, was_new_sign: bool) -> str:
+def build_report(nickname: str, state: str, task_info: dict) -> str:
     """构建签到报告"""
     lines = ["🎮 小黑盒 每日签到", "", f"👤 账号: {nickname}"]
 
-    if was_new_sign:
+    if state == "success":
         lines.append("✅ 签到状态: 签到成功!")
 
         # 提取签到奖励
@@ -164,11 +167,11 @@ def build_report(nickname: str, is_signed: bool,
 
         if not award_found:
             lines.append("🎁 奖励: 已自动发放")
-    elif is_signed:
+    elif state == "ignore":
         lines.append("⚠️ 签到状态: 今日已签到")
         lines.append("🎁 无需重复签到")
     else:
-        lines.append("❌ 签到状态: 未签到")
+        lines.append("❌ 签到状态: 签到失败")
         lines.append("💡 请检查 Cookie 是否有效")
 
     lines.append("")
@@ -190,20 +193,11 @@ def main():
     # 检查签到状态
     is_signed, sign_list = get_sign_status(session)
 
-    was_new_sign = False
+    state = "ignore"
     if not is_signed:
         log_info("今日未签到，开始执行签到...")
-        was_new_sign = do_sign(session)
-
-        # 重新检查签到状态确认
-        is_signed, sign_list = get_sign_status(session)
-        if is_signed:
-            log_success("签到成功!")
-            was_new_sign = True
-        elif was_new_sign:
-            log_success("签到接口返回成功")
-        else:
-            log_warning("签到未确认成功，请检查 Cookie 是否有效")
+        state = do_sign(session)
+        is_signed = (state in ("success", "ignore"))
     else:
         log_info("今日已签到，无需重复签到")
 
@@ -212,7 +206,7 @@ def main():
     task_info = task_info or {}
 
     # 构建报告
-    report = build_report(nickname, is_signed, task_info, was_new_sign)
+    report = build_report(nickname, state, task_info)
     notify_send("小黑盒 签到报告", report)
     log_success("推送完成")
 
