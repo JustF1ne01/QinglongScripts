@@ -8,14 +8,12 @@ new Env("掌瓦每日商店推送")
 - 皮肤图片单独推送至 Telegram
 """
 
-import json
 import os
-import tempfile
 import requests
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone, timedelta
 
 from utils import log_info, log_success, log_warning, log_error, beijing_time_str
-from notify import send as notify_send
+from notifier import send as notify_send, send_photos as notify_send_photos
 
 # ==================== 用户配置 ====================
 VALORANT_COOKIE = os.environ.get("VALORANT_COOKIE", "")
@@ -96,57 +94,6 @@ def get_daily_store(session: requests.Session) -> tuple:
     return [], 0
 
 
-def download_image(url: str) -> bytes:
-    """下载图片"""
-    try:
-        resp = requests.get(url, timeout=15)
-        if resp.ok:
-            return resp.content
-    except Exception:
-        pass
-    return b""
-
-
-def send_telegram_photos(items: list) -> int:
-    """通过 Telegram 发送皮肤图片，返回成功发送数量"""
-    bot_token = os.environ.get("TG_BOT_TOKEN", "").strip()
-    chat_id = os.environ.get("TG_USER_ID", "").strip() or os.environ.get("TG_CHAT_ID", "").strip()
-    if not bot_token or not chat_id:
-        return 0
-
-    sent = 0
-    for i, item in enumerate(items):
-        name = item.get("goods_name", "未知")
-        price = item.get("rmb_price", "?")
-        quality = item.get("quality", "")
-        quality_name, quality_emoji = QUALITY_MAP.get(quality, ("未知", "⬜"))
-        image_url = item.get("goods_pic", "")
-
-        if not image_url:
-            continue
-
-        caption = f"{quality_emoji} {name}\n💰 {price} 点券 | {quality_name}"
-
-        image_data = download_image(image_url)
-        if not image_data:
-            log_warning(f"下载皮肤图片失败: {name}")
-            continue
-
-        try:
-            url = f"https://api.telegram.org/bot{bot_token}/sendPhoto"
-            resp = requests.post(url, data={"chat_id": chat_id, "caption": caption, "parse_mode": "HTML"},
-                                files={"photo": (f"skin_{i+1}.png", image_data, "image/png")}, timeout=20)
-            if resp.json().get("ok"):
-                sent += 1
-                log_success(f"已发送图片: {name}")
-            else:
-                log_warning(f"发送图片失败 [{name}]: {resp.json().get('description')}")
-        except Exception as e:
-            log_error(f"发送图片异常 [{name}]: {e}")
-
-    return sent
-
-
 def build_report(items: list, nickname: str, end_ts: int) -> str:
     """构建文字报告"""
     end_time = datetime.fromtimestamp(end_ts, tz=TZ_BEIJING).strftime("%Y-%m-%d %H:%M") if end_ts else "未知"
@@ -193,13 +140,27 @@ def main():
         notify_send("掌瓦每日商店", "⚠️ 未获取到商店内容，请检查 Cookie 或稍后重试")
         return
 
-    # 发送文字报告到所有通知渠道
+    # 构建文字报告
     report = build_report(items, nickname, end_ts)
-    notify_send("掌瓦每日商店", report)
 
-    # 发送皮肤图片到 Telegram
-    pic_count = send_telegram_photos(items)
-    log_info(f"图片推送完成: {pic_count}/{len(items)} 张")
+    # 构建图片列表
+    photos = []
+    for item in items:
+        name = item.get("goods_name", "未知")
+        price = item.get("rmb_price", "?")
+        quality = item.get("quality", "")
+        image_url = item.get("goods_pic", "")
+        if not image_url:
+            continue
+        quality_name, quality_emoji = QUALITY_MAP.get(quality, ("未知", "⬜"))
+        photos.append({
+            "image": image_url,
+            "caption": f"{quality_emoji} {name}  |  💰 {price} 点券 ({quality_name})",
+        })
+
+    # 通知: 文本推所有通道, 图片仅 Telegram
+    notify_send_photos("掌瓦每日商店", report, photos)
+    log_info(f"推送完成: 文字 + {len(photos)} 张图片")
 
 
 if __name__ == "__main__":

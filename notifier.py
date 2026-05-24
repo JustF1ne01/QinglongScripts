@@ -463,6 +463,24 @@ def _send_telegram_file(title: str, content: str, file_path: str) -> bool:
         return False
 
 
+def _send_telegram_photo(title: str, image_url: str) -> bool:
+    """通过 Telegram 发送单张图片（从 URL 下载后上传）"""
+    base_url, chat_id, proxies = _get_telegram_kwargs()
+    if not base_url or not image_url:
+        return False
+    try:
+        img_resp = requests.get(image_url, timeout=15, proxies=proxies)
+        if not img_resp.ok:
+            return False
+        url = f"{base_url}/sendPhoto"
+        resp = requests.post(url, data={"chat_id": chat_id, "caption": title},
+                            files={"photo": ("image.png", img_resp.content, "image/png")},
+                            proxies=proxies, timeout=20)
+        return resp.json().get("ok", False)
+    except Exception:
+        return False
+
+
 # ==================== 17. 智能微秘书 ====================
 def _send_aibotk(title: str, content: str) -> bool:
     aibotk_key = os.environ.get("AIBOTK_KEY", "").strip()
@@ -651,3 +669,24 @@ def _send_wxpusher(title: str, content: str) -> bool:
         return resp.ok
     except Exception:
         return False
+
+
+# ==================== 图片推送 ====================
+
+def send_photos(title: str, text_content: str, photos: list) -> None:
+    """
+    发送图片通知：文本推送到所有通道，图片仅 Telegram。
+    photos: [{"image": "url或本地路径", "caption": "图片说明"}, ...]
+    """
+    # 文本推送所有通道
+    send(title, text_content)
+
+    # 图片仅 Telegram
+    for i, photo in enumerate(photos):
+        image = photo.get("image", "")
+        caption = photo.get("caption", f"Photo {i+1}")
+        full_caption = f"{title}\n{caption}"
+        try:
+            _send_telegram_photo(full_caption, image)
+        except Exception:
+            pass
