@@ -75,8 +75,12 @@ def _extract_from_cookie(key: str, default: str = "") -> str:
 
 
 def _rsa_encrypt(plain: str) -> str:
+    """RSA 加密 + base64（64 字符换行，匹配 JSEncrypt 输出）"""
     encrypted = _RSA_KEY.encrypt(plain.encode(), padding.PKCS1v15())
-    return quote(base64.b64encode(encrypted).decode())
+    b64 = base64.b64encode(encrypted).decode()
+    # JSEncrypt 每 64 字符加 \n
+    wrapped = "\n".join(b64[i:i+64] for i in range(0, len(b64), 64))
+    return quote(wrapped, safe="")
 
 
 def create_session() -> requests.Session:
@@ -94,28 +98,34 @@ def create_session() -> requests.Session:
     return session
 
 
-def build_params(heybox_id: str, imei: str) -> str:
+def build_params(heybox_id: str, imei: str, is_first: bool = False) -> str:
+    now_ts = int(datetime.now(TZ_BEIJING).timestamp())
     params = [
+        f"is_new_device={'0' if not is_first else '1'}",
         f"heybox_id={heybox_id}",
         f"imei={imei}",
         "device_info=25102RKBEC",
         f"nonce={_random_str(32)}",
         f"hkey={_random_hex(8)}",
+        f"_rnd=14:{_random_hex(8)}",
         "os_type=Android",
         "x_os_type=Android",
         "x_client_type=mobile",
         "os_version=16",
         "version=1.3.382",
         "build=1076",
-        f"_time={int(datetime.now(TZ_BEIJING).timestamp())}",
+        f"_time={now_ts}",
+        "dw=400",
         "channel=heybox_yingyongbao",
         "x_app=heybox",
+        "time_zone=Asia/Shanghai",
     ]
     return "&".join(params)
 
 
-def api_get(session: requests.Session, path: str, heybox_id: str, imei: str) -> dict:
-    url = f"{API_BASE}{path}?{build_params(heybox_id, imei)}"
+def api_get(session: requests.Session, path: str, heybox_id: str, imei: str,
+            is_first: bool = False) -> dict:
+    url = f"{API_BASE}{path}?{build_params(heybox_id, imei, is_first)}"
     try:
         return session.get(url, timeout=15).json()
     except Exception as e:
@@ -123,8 +133,9 @@ def api_get(session: requests.Session, path: str, heybox_id: str, imei: str) -> 
         return {}
 
 
-def api_post(session: requests.Session, path: str, heybox_id: str, imei: str, data: str) -> dict:
-    url = f"{API_BASE}{path}?{build_params(heybox_id, imei)}"
+def api_post(session: requests.Session, path: str, heybox_id: str, imei: str, data: str,
+             is_first: bool = False) -> dict:
+    url = f"{API_BASE}{path}?{build_params(heybox_id, imei, is_first)}"
     try:
         return session.post(url, data=data,
                            headers={"Content-Type": "application/x-www-form-urlencoded"},
@@ -144,7 +155,7 @@ def login(session: requests.Session, imei: str) -> tuple:
     encrypted_pwd = _rsa_encrypt(HEYBOX_PASSWORD)
     body = f"phone_num={encrypted_phone}&pwd={encrypted_pwd}"
 
-    result = api_post(session, "/account/login/", "-1", imei, body)
+    result = api_post(session, "/account/login/", "-1", imei, body, is_first=True)
     if result.get("status") != "ok":
         msg = result.get("msg", "未知错误")
         log_error(f"登录失败: {msg}")
