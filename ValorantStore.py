@@ -63,14 +63,22 @@ def api_post(session: requests.Session, path: str, body: dict = None) -> dict:
 
 def refresh_token(session: requests.Session) -> str:
     """刷新 access_token，返回新的 token"""
-    result = api_post(session, "/go/auth/refresh_third_token")
+    cookie = {c.name: c.value for c in session.cookies}
+    body = {
+        "type": cookie.get("acctype", "qc"),
+        "uuid": cookie.get("userId", ""),
+        "openid": cookie.get("openid", ""),
+        "source_game_zone": "agame",
+        "game_zone": "agame",
+    }
+    result = api_post(session, "/go/auth/refresh_third_token", body)
     if result.get("result") == 0:
         token = result.get("data", {}).get("access_token", "")
         if token:
             session.cookies.set("access_token", token, domain="app.mval.qq.com")
             log_success("access_token 刷新成功")
             return token
-    log_warning(f"刷新 token 失败: {result.get('msg', '未知')}")
+    log_warning(f"刷新 token 失败: {result.get('msg', result.get('err_msg', '未知'))}")
     return ""
 
 
