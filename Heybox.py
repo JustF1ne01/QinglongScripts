@@ -91,8 +91,6 @@ def create_session(heybox_id: str = "30182259") -> requests.Session:
             if "=" in item:
                 k, v = item.split("=", 1)
                 s.cookies.set(k.strip(), v.strip(), domain="xiaoheihe.cn")
-    else:
-        s.cookies.set("pkey", _make_pkey(heybox_id), domain="xiaoheihe.cn")
     return s
 
 
@@ -154,7 +152,10 @@ def login(session: requests.Session) -> tuple:
         log_info(f"  phone(前30): {quote(b64_phone, safe='')[:30]}")
         try:
             resp = session.post(url, data=body,
-                               headers={"Content-Type": "application/x-www-form-urlencoded"},
+                               headers={
+                                   "Content-Type": "application/x-www-form-urlencoded",
+                                   "Referer": "http://api.maxjia.com/",
+                               },
                                timeout=15).json()
         except Exception as e:
             log_warning(f"Key {idx} 请求异常: {e}")
