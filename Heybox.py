@@ -43,7 +43,7 @@ _RSA_KEY = None  # 登录成功后锁定
 _API_BASE = "https://api.xiaoheihe.cn"
 _TZ_BEIJING = timezone(timedelta(hours=8))
 
-_UA = "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2272.118 Safari/537.36 ApiMaxJia/1.0"
+_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
 _IMEI = "a9381821da647661"
 _DEVICE_INFO = "25102RKBEC"
 
@@ -129,62 +129,28 @@ def _gen_timestamp() -> int:
 
 
 def _build_url(path: str, heybox_id: str, extra_params: dict = None) -> str:
-    """构建带 hkey 签名的完整 URL"""
+    """构建带 web hkey 签名的完整 URL（统一使用 web 参数）"""
     ts = _gen_timestamp()
     nonce = _gen_nonce()
     hkey = _compute_hkey(path, ts, nonce)
 
     params = {
         "heybox_id": heybox_id,
-        "imei": _IMEI,
-        "device_info": _DEVICE_INFO,
         "nonce": nonce,
         "hkey": hkey,
-        "_rnd": f"14:{''.join(random.choice('0123456789ABCDEF') for _ in range(8))}",
-        "os_type": "Android",
-        "x_os_type": "Android",
-        "x_client_type": "mobile",
-        "os_version": "16",
-        "version": "1.3.382",
-        "build": "1076",
         "_time": str(ts),
-        "channel": "heybox_yingyongbao",
-        "x_app": "heybox",
+        "os_type": "web",
+        "app": "heybox",
+        "client_type": "web",
+        "version": "999.0.4",
+        "x_client_type": "web",
+        "x_app": "heybox_website",
+        "x_os_type": "Windows",
+        "device_info": "Chrome",
     }
     if extra_params:
         params.update(extra_params)
 
-    qs = "&".join(f"{k}={v}" for k, v in params.items())
-    return f"{_API_BASE}{path}?{qs}"
-
-
-def _build_login_url() -> str:
-    """构建登录专用 URL（heybox_id=-1, 含 is_new_device/dw/time_zone）"""
-    ts = _gen_timestamp()
-    nonce = _gen_nonce()
-    path = "/account/login/"
-    hkey = _compute_hkey(path, ts, nonce)
-
-    params = {
-        "is_new_device": "0",
-        "heybox_id": "-1",
-        "imei": _IMEI,
-        "device_info": _DEVICE_INFO,
-        "nonce": nonce,
-        "hkey": hkey,
-        "_rnd": f"14:{''.join(random.choice('0123456789ABCDEF') for _ in range(8))}",
-        "os_type": "Android",
-        "x_os_type": "Android",
-        "x_client_type": "mobile",
-        "os_version": "16",
-        "version": "1.3.382",
-        "build": "1076",
-        "_time": str(ts),
-        "dw": "400",
-        "channel": "heybox_yingyongbao",
-        "x_app": "heybox",
-        "time_zone": "Asia/Shanghai",
-    }
     qs = "&".join(f"{k}={v}" for k, v in params.items())
     return f"{_API_BASE}{path}?{qs}"
 
@@ -235,13 +201,13 @@ def login(session: requests.Session) -> tuple:
             continue
 
         body = f"phone_num={_rsa_encrypt(key, HEYBOX_PHONE)}&pwd={_rsa_encrypt(key, HEYBOX_PASSWORD)}"
-        url = _build_login_url()
+        url = _build_url("/account/login/", "-1")
         log_info(f"尝试 Key {idx}...")
         try:
             resp = session.post(url, data=body,
                                headers={
                                    "Content-Type": "application/x-www-form-urlencoded",
-                                   "Referer": "http://api.maxjia.com/",
+                                   "Referer": "https://www.xiaoheihe.cn/",
                                },
                                timeout=15).json()
         except Exception as e:
