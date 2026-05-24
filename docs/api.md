@@ -16,6 +16,7 @@
 - [八、Bitwarden 备份 (Sync_Password.py)](#八bitwarden-备份-sync_passwordpy)
 - [九、SSL 证书检查 (SSL.py)](#九ssl-证书检查-sslpy)
 - [十、Telegram Bot API (通用)](#十telegram-bot-api-通用)
+- [十一、掌上无畏契约 (ValorantStore.py)](valorant-api.md)
 
 ---
 

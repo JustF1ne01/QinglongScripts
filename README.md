@@ -45,6 +45,7 @@
 | 🔑 Sync_Password.py | Bitwarden 备份 | `0 0 * * *` | 每天 0:00 |
 | 💬 Tieba.py | 百度贴吧签到 | `0 0 * * *` | 每天 0:00 |
 | 🏝️ skyland.py | 森空岛签到 | `0 8 * * *` | 每天 8:00 |
+| 🔫 ValorantStore.py | 掌瓦每日商店 | `15 8 * * *` | 每天 8:15 |
 | 🔔 notifier.py | 通知模块 | — | 公共依赖，非定时任务 |
 | 🧰 utils.py | 公共工具 | — | 公共依赖，非定时任务 |
 
