@@ -3,10 +3,8 @@
 cron: 0 8 * * *
 new Env("小黑盒每日签到")
 小黑盒 (Heybox) 每日签到脚本
-- 仅需手机号+密码即可运行（无需抓包 Cookie）
-- RSA 加密登录，自动获取/刷新 Cookie
-- 执行每日签到 (task/sign_v3/sign)
-- 推送签到结果
+- 仅需手机号+密码即可运行（RSA 加密登录，无需抓包）
+- 自动获取/刷新 Cookie，执行每日签到
 """
 
 import base64
@@ -25,13 +23,11 @@ from utils import log_info, log_success, log_warning, log_error, beijing_time_st
 from notifier import send as notify_send
 
 # ==================== 用户配置 ====================
-HEYBOX_COOKIE = os.environ.get("HEYBOX_COOKIE", "")          # 可选，有则直接用
-HEYBOX_PHONE = os.environ.get("HEYBOX_PHONE", "")            # 手机号（必填）
-HEYBOX_PASSWORD = os.environ.get("HEYBOX_PASSWORD", "")      # 密码（必填）
-HEYBOX_ID = os.environ.get("HEYBOX_ID", "")                  # 可选，自动获取
-IMEI = os.environ.get("HEYBOX_IMEI", "")                     # 可选，自动生成
+HEYBOX_COOKIE = os.environ.get("HEYBOX_COOKIE", "")
+HEYBOX_PHONE = os.environ.get("HEYBOX_PHONE", "")
+HEYBOX_PASSWORD = os.environ.get("HEYBOX_PASSWORD", "")
 
-# 从 APK (classes2.dex, LogHkLoginByIntent) 提取的 RSA 1024-bit 公钥
+# 从 APK (classes2.dex, LogHkLoginByIntent) 提取
 RSA_PUBLIC_KEY = """-----BEGIN PUBLIC KEY-----
 MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQC5se07mkN71qsSJHjZ2Z0+Z+4L
 lLvf2sz7Md38VAa3EmAOvI7vZp3hbAxicL724ylcmisTPtZQhT/9C+25AELqy9PN
@@ -43,30 +39,21 @@ API_BASE = "https://api.xiaoheihe.cn"
 TZ_BEIJING = timezone(timedelta(hours=8))
 _RSA_KEY = serialization.load_pem_public_key(RSA_PUBLIC_KEY.encode())
 
-
-def _random_str(length: int = 32) -> str:
-    return "".join(random.choice(string.ascii_letters + string.digits) for _ in range(length))
-
-
-def _random_hex(length: int = 8) -> str:
-    return "".join(random.choice("0123456789ABCDEF") for _ in range(length))
+# 从 HAR 成功请求复用的设备参数
+_IMEI = "a9381821da647661"
+_DEVICE_INFO = "25102RKBEC"
+_UA = "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2272.118 Safari/537.36 ApiMaxJia/1.0"
 
 
-def _random_imei() -> str:
-    return "a" + "".join(random.choice("0123456789abcdef") for _ in range(15))
+def _rand_str(n: int = 32) -> str:
+    return "".join(random.choice(string.ascii_letters + string.digits) for _ in range(n))
 
 
-def _generate_pkey(heybox_id: str = "30182259") -> str:
-    """生成 pkey 设备指纹: {timestamp}.{rand}_{heybox_id}{rand} 的 base64"""
-    ts = time.time()
-    rand = str(random.randint(10, 99))
-    rand_str = _random_str(12)
-    raw = f"{ts:.4f}.{rand}_{heybox_id}{rand_str}"
-    # URL-unsafe base64, strip padding
-    return base64.b64encode(raw.encode()).decode().rstrip("=")
+def _rand_hex(n: int = 8) -> str:
+    return "".join(random.choice("0123456789ABCDEF") for _ in range(n))
 
 
-def _extract_from_cookie(key: str, default: str = "") -> str:
+def _extract_cookie(key: str, default: str = "") -> str:
     for item in (HEYBOX_COOKIE or "").split(";"):
         item = item.strip()
         if "=" in item and item.split("=", 1)[0].strip() == key:
@@ -75,217 +62,173 @@ def _extract_from_cookie(key: str, default: str = "") -> str:
 
 
 def _rsa_encrypt(plain: str) -> str:
-    """RSA 加密 + base64（64 字符换行，匹配 JSEncrypt 输出）"""
-    encrypted = _RSA_KEY.encrypt(plain.encode(), padding.PKCS1v15())
-    b64 = base64.b64encode(encrypted).decode()
-    # JSEncrypt 每 64 字符加 \n
+    """RSA PKCS1v15 → base64 64字符换行 → URL 编码"""
+    enc = _RSA_KEY.encrypt(plain.encode(), padding.PKCS1v15())
+    b64 = base64.b64encode(enc).decode()
     wrapped = "\n".join(b64[i:i+64] for i in range(0, len(b64), 64))
     return quote(wrapped, safe="")
 
 
-def create_session() -> requests.Session:
-    session = requests.Session()
-    session.headers.update({
-        "User-Agent": "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2272.118 Safari/537.36 ApiMaxJia/1.0",
-        "Accept-Encoding": "gzip",
-    })
+def _make_pkey(heybox_id: str) -> str:
+    ts = time.time()
+    raw = f"{ts:.4f}.{random.randint(10,99)}_{heybox_id}{_rand_str(12)}"
+    return base64.b64encode(raw.encode()).decode().rstrip("=")
+
+
+def create_session(heybox_id: str = "30182259") -> requests.Session:
+    s = requests.Session()
+    s.headers.update({"User-Agent": _UA, "Accept-Encoding": "gzip"})
     if HEYBOX_COOKIE:
         for item in HEYBOX_COOKIE.split(";"):
             item = item.strip()
             if "=" in item:
                 k, v = item.split("=", 1)
-                session.cookies.set(k.strip(), v.strip(), domain="xiaoheihe.cn")
-    return session
+                s.cookies.set(k.strip(), v.strip(), domain="xiaoheihe.cn")
+    else:
+        s.cookies.set("pkey", _make_pkey(heybox_id), domain="xiaoheihe.cn")
+    return s
 
 
-def build_params(heybox_id: str, imei: str, is_first: bool = False) -> str:
-    now_ts = int(datetime.now(TZ_BEIJING).timestamp())
-    params = [
-        f"is_new_device={'0' if not is_first else '1'}",
-        f"heybox_id={heybox_id}",
-        f"imei={imei}",
-        "device_info=25102RKBEC",
-        f"nonce={_random_str(32)}",
-        f"hkey={_random_hex(8)}",
-        f"_rnd=14:{_random_hex(8)}",
-        "os_type=Android",
-        "x_os_type=Android",
-        "x_client_type=mobile",
-        "os_version=16",
-        "version=1.3.382",
-        "build=1076",
-        f"_time={now_ts}",
-        "dw=400",
-        "channel=heybox_yingyongbao",
-        "x_app=heybox",
-        "time_zone=Asia/Shanghai",
-    ]
-    return "&".join(params)
+def _common_params(heybox_id: str) -> str:
+    ts = int(datetime.now(TZ_BEIJING).timestamp())
+    return (
+        f"heybox_id={heybox_id}&imei={_IMEI}&device_info={_DEVICE_INFO}"
+        f"&nonce={_rand_str()}&hkey={_rand_hex()}&_rnd=14:{_rand_hex()}"
+        f"&os_type=Android&x_os_type=Android&x_client_type=mobile"
+        f"&os_version=16&version=1.3.382&build=1076"
+        f"&_time={ts}&channel=heybox_yingyongbao&x_app=heybox"
+    )
 
 
-def api_get(session: requests.Session, path: str, heybox_id: str, imei: str,
-            is_first: bool = False) -> dict:
-    url = f"{API_BASE}{path}?{build_params(heybox_id, imei, is_first)}"
+def _login_params() -> str:
+    ts = int(datetime.now(TZ_BEIJING).timestamp())
+    return (
+        f"is_new_device=0&heybox_id=-1&imei={_IMEI}&device_info={_DEVICE_INFO}"
+        f"&nonce={_rand_str()}&hkey={_rand_hex()}&_rnd=14:{_rand_hex()}"
+        f"&os_type=Android&x_os_type=Android&x_client_type=mobile"
+        f"&os_version=16&version=1.3.382&build=1076"
+        f"&_time={ts}&dw=400&channel=heybox_yingyongbao&x_app=heybox"
+        f"&time_zone=Asia/Shanghai"
+    )
+
+
+def api_get(session: requests.Session, path: str, heybox_id: str) -> dict:
     try:
-        return session.get(url, timeout=15).json()
+        return session.get(f"{API_BASE}{path}?{_common_params(heybox_id)}", timeout=15).json()
     except Exception as e:
-        log_error(f"API 请求失败 [{path}]: {e}")
+        log_error(f"GET {path}: {e}")
         return {}
 
 
-def api_post(session: requests.Session, path: str, heybox_id: str, imei: str, data: str,
-             is_first: bool = False) -> dict:
-    url = f"{API_BASE}{path}?{build_params(heybox_id, imei, is_first)}"
+def login(session: requests.Session) -> tuple:
+    """返回 (heybox_id, nickname) 或 (None, 错误)"""
+    if not HEYBOX_PHONE or not HEYBOX_PASSWORD:
+        return None, "未配置手机号/密码"
+
+    log_info("正在登录...")
+    body = f"phone_num={_rsa_encrypt(HEYBOX_PHONE)}&pwd={_rsa_encrypt(HEYBOX_PASSWORD)}"
+    url = f"{API_BASE}/account/login/?{_login_params()}"
     try:
-        return session.post(url, data=data,
+        resp = session.post(url, data=body,
                            headers={"Content-Type": "application/x-www-form-urlencoded"},
                            timeout=15).json()
     except Exception as e:
-        log_error(f"API 请求失败 [{path}]: {e}")
-        return {}
+        return None, str(e)
+
+    if resp.get("status") != "ok":
+        return None, resp.get("msg", "未知错误")
+
+    p = resp.get("result", {}).get("profile", {})
+    return p.get("heybox_id", ""), p.get("nickname", "未知")
 
 
-def login(session: requests.Session, imei: str) -> tuple:
-    """RSA 加密登录，返回 (heybox_id, nickname) 或 (None, 错误信息)"""
-    if not HEYBOX_PHONE or not HEYBOX_PASSWORD:
-        return None, "未配置 HEYBOX_PHONE / HEYBOX_PASSWORD"
-
-    log_info("正在登录...")
-    encrypted_phone = _rsa_encrypt(HEYBOX_PHONE)
-    encrypted_pwd = _rsa_encrypt(HEYBOX_PASSWORD)
-    body = f"phone_num={encrypted_phone}&pwd={encrypted_pwd}"
-
-    result = api_post(session, "/account/login/", "-1", imei, body, is_first=True)
-    if result.get("status") != "ok":
-        msg = result.get("msg", "未知错误")
-        log_error(f"登录失败: {msg}")
-        return None, msg
-
-    profile = result.get("result", {}).get("profile", {})
-    heybox_id = profile.get("heybox_id", "")
-    nickname = profile.get("nickname", "未知")
-    log_success(f"登录成功: {nickname} (ID: {heybox_id})")
-    return heybox_id, nickname
-
-
-def get_sign_status(session: requests.Session, heybox_id: str, imei: str) -> bool:
-    result = api_get(session, "/task/sign_list/", heybox_id, imei)
-    if result.get("status") != "ok":
+def get_sign_status(session: requests.Session, hid: str) -> bool:
+    r = api_get(session, "/task/sign_list/", hid)
+    if r.get("status") != "ok":
         return False
-    sign_list = result.get("result", {}).get("sign_list", [])
-    today_start = datetime.now(TZ_BEIJING).replace(hour=0, minute=0, second=0, microsecond=0)
-    today_ts = int(today_start.timestamp())
-    for item in sign_list:
+    today_ts = int(datetime.now(TZ_BEIJING).replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
+    for item in r.get("result", {}).get("sign_list", []):
         if item["date"] == today_ts:
             return item.get("is_sign", False)
     return False
 
 
-def do_sign(session: requests.Session, heybox_id: str, imei: str) -> str:
-    result = api_get(session, "/task/sign_v3/sign", heybox_id, imei)
-    if result.get("status") != "ok":
-        log_error(f"签到请求失败: {result}")
-        return "fail"
-    state = result.get("result", {}).get("state", "fail")
-    state_map = {"success": "签到成功 ✅", "ignore": "今日已签到，无需重复 ⚠️", "fail": "签到失败 ❌"}
-    log_info(f"签到结果: {state_map.get(state, state)}")
-    return state
+def do_sign(session: requests.Session, hid: str) -> str:
+    r = api_get(session, "/task/sign_v3/sign", hid)
+    return r.get("result", {}).get("state", "fail") if r.get("status") == "ok" else "fail"
 
 
-def get_task_list(session: requests.Session, heybox_id: str, imei: str) -> dict:
-    result = api_get(session, "/task/list_v2/", heybox_id, imei)
-    return result.get("result", {}) if result.get("status") == "ok" else {}
+def get_task_info(session: requests.Session, hid: str) -> dict:
+    r = api_get(session, "/task/list_v2/", hid)
+    return r.get("result", {}) if r.get("status") == "ok" else {}
+
+
+def get_nickname(session: requests.Session, hid: str) -> str:
+    r = api_get(session, "/account/info/", hid)
+    return r.get("result", {}).get("profile", {}).get("nickname", "未知")
 
 
 def build_report(nickname: str, state: str, task_info: dict) -> str:
-    lines = ["🎮 小黑盒 每日签到", "", f"👤 账号: {nickname}"]
-
+    L = ["🎮 小黑盒 每日签到", "", f"👤 账号: {nickname}"]
     if state == "success":
-        lines.append("✅ 签到状态: 签到成功!")
-        for group in task_info.get("task_list", []):
-            for task in group.get("tasks", []):
-                if task.get("type") == "sign":
-                    awards = task.get("award_desc_v2", [])
-                    if awards:
-                        lines.append("🎁 签到奖励:")
-                        for a in awards:
-                            lines.append(f"   {a.get('desc', '')}")
-                    lines.append(f"🔥 连续签到: {task.get('sign_in_streak', '?')} 天")
+        L.append("✅ 签到状态: 签到成功!")
+        for g in task_info.get("task_list", []):
+            for t in g.get("tasks", []):
+                if t.get("type") == "sign":
+                    for a in t.get("award_desc_v2", []):
+                        L.append(f"🎁 {a.get('desc', '')}")
+                    L.append(f"🔥 连续签到: {t.get('sign_in_streak', '?')} 天")
                     break
+            else:
+                continue
+            break
         else:
-            lines.append("🎁 奖励: 已自动发放")
+            L.append("🎁 奖励: 已自动发放")
     elif state == "ignore":
-        lines.append("⚠️ 签到状态: 今日已签到")
+        L.append("⚠️ 签到状态: 今日已签到")
     else:
-        lines.append("❌ 签到状态: 签到失败")
-
-    lines.append("")
-    lines.append("─" * 18)
-    lines.append(f"🕒 执行时间: {beijing_time_str()}")
-    return "\n".join(lines)
+        L.append("❌ 签到状态: 签到失败")
+    L += ["", "─" * 18, f"🕒 执行时间: {beijing_time_str()}"]
+    return "\n".join(L)
 
 
 def main():
     if not HEYBOX_PHONE and not HEYBOX_COOKIE:
-        log_error("未配置 HEYBOX_PHONE 或 HEYBOX_COOKIE")
-        notify_send("小黑盒签到 错误", "❌ 请配置 HEYBOX_PHONE + HEYBOX_PASSWORD，或 HEYBOX_COOKIE")
+        notify_send("小黑盒签到 错误", "❌ 请配置 HEYBOX_PHONE + HEYBOX_PASSWORD")
         return
 
-    imei = IMEI or _random_imei()
-    session = create_session()
+    # 确定 heybox_id
+    hid = _extract_cookie("heybox_id", "") or "30182259"
+    session = create_session(hid)
 
-    # 如果有 cookie 则直接使用，否则尝试登录
-    heybox_id = HEYBOX_ID or _extract_from_cookie("heybox_id", "")
+    # 有 cookie 先验证
     nickname = "未知"
-
-    if not heybox_id:
-        # 设置一个临时 pkey 用于登录
-        temp_pkey = _generate_pkey("30182259")
-        session.cookies.set("pkey", temp_pkey, domain="xiaoheihe.cn")
-
-        heybox_id, result = login(session, imei)
-        if not heybox_id:
-            notify_send("小黑盒签到 错误", f"❌ 登录失败: {result}")
-            return
-        nickname = result
-    else:
-        log_info(f"使用已有 Cookie, heybox_id={heybox_id}")
-        # 先尝试获取账户信息验证 cookie 是否有效
-        result = api_get(session, "/account/info/", heybox_id, imei)
-        profile = result.get("result", {}).get("profile", {})
-        if not profile:
-            log_warning("Cookie 可能已过期，尝试重新登录...")
-            temp_pkey = _generate_pkey("30182259")
-            session.cookies.set("pkey", temp_pkey, domain="xiaoheihe.cn")
-            session.cookies.clear("x_xhh_tokenid", domain="xiaoheihe.cn")
-
-            new_id, nickname = login(session, imei)
-            if new_id:
-                heybox_id = new_id
-            else:
-                notify_send("小黑盒签到 错误", f"❌ Cookie 过期且登录失败")
+    if HEYBOX_COOKIE:
+        nickname = get_nickname(session, hid)
+        if nickname == "未知":
+            log_warning("Cookie 过期，尝试登录...")
+            hid, nickname = login(session) or (None, None)
+            if not hid:
+                notify_send("小黑盒签到 错误", "❌ Cookie 过期且登录失败")
                 return
-        else:
-            nickname = profile.get("nickname", "未知")
+    else:
+        hid, nickname = login(session) or (None, None)
+        if not hid:
+            notify_send("小黑盒签到 错误", f"❌ 登录失败: {nickname}")
+            return
 
-    log_info(f"账号: {nickname} (ID: {heybox_id})")
+    log_info(f"账号: {nickname}")
 
-    # 签到
-    is_signed = get_sign_status(session, heybox_id, imei)
-    state = "ignore" if is_signed else do_sign(session, heybox_id, imei)
+    state = "ignore" if get_sign_status(session, hid) else do_sign(session, hid)
+    if state == "fail":
+        log_info("签到失败，重新登录后重试...")
+        new_hid, new_nick = login(session) or (None, None)
+        if new_hid:
+            hid, nickname = new_hid, new_nick
+            state = "ignore" if get_sign_status(session, hid) else do_sign(session, hid)
 
-    # 签到失败时重试登录
-    if state == "fail" and HEYBOX_PHONE:
-        log_info("签到失败，尝试重新登录...")
-        new_id, _ = login(session, imei)
-        if new_id:
-            is_signed = get_sign_status(session, new_id, imei)
-            state = "ignore" if is_signed else do_sign(session, new_id, imei)
-
-    task_info = get_task_list(session, heybox_id, imei) or {}
-
-    report = build_report(nickname, state, task_info)
-    notify_send("小黑盒 签到报告", report)
+    ti = get_task_info(session, hid) or {}
+    notify_send("小黑盒 签到报告", build_report(nickname, state, ti))
     log_success("推送完成")
 
 
