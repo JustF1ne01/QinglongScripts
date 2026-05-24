@@ -132,6 +132,17 @@ def login(session: requests.Session) -> tuple:
     if not HEYBOX_PHONE or not HEYBOX_PASSWORD:
         return None, "未配置手机号/密码"
 
+    # 先访问首页建立初始 session（获取服务器下发的 tokenid）
+    if not HEYBOX_COOKIE:
+        log_info("建立初始会话...")
+        try:
+            seed_resp = session.get(f"{_API_BASE}/account/login/?{_login_params()}",
+                                    headers={"Referer": "http://api.maxjia.com/"},
+                                    timeout=15)
+            log_info(f"会话初始化: {len(session.cookies)} 个 cookie")
+        except Exception:
+            pass
+
     for idx, key_str in enumerate(_RSA_CANDIDATES):
         pub = f"-----BEGIN PUBLIC KEY-----\n{key_str}\n-----END PUBLIC KEY-----"
         try:
