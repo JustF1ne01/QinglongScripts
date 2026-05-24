@@ -128,14 +128,39 @@ GET https://api.xiaoheihe.cn/task/replenish_sign_coin/
 
 ## 三、登录流程（Cookie 刷新）
 
-登录使用 **RSA 公钥加密** (jsencrypt@3.3.2)，`phone_num` 和 `pwd` 在提交前用公钥加密。
+登录使用 **RSA 公钥加密** (jsencrypt@3.3.2 + PKCS1v15 padding)。
 
-| 步骤 | 端点 | 方法 | Body |
-|------|------|------|------|
-| 1 | `/account/get_pwd_code/` | POST | `phone_num={RSA加密}` |
-| 2 | `/account/get_pwd_sid/?code={SMS}` | POST | `phone_num={RSA加密}` |
-| 3 | `/account/login/` | POST | `phone_num={RSA}&pwd={RSA}` |
-| 4 | — | — | 成功后 Cookie 中 `x_xhh_tokenid` 更新 |
+### RSA 公钥
+
+从 APK `classes2.dex` 中 `LogHkLoginByIntent` 类提取：
+
+```
+-----BEGIN PUBLIC KEY-----
+MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQC5se07mkN71qsSJHjZ2Z0+Z+4L
+lLvf2sz7Md38VAa3EmAOvI7vZp3hbAxicL724ylcmisTPtZQhT/9C+25AELqy9PN
+9JmzKpwoVTUoJvxG4BoyT49+gGVl6s6zo1byNoHUzTfkmRfmC9MC53HvG8GwKP5
+xtcdptFjAIcgIR7oAWQIDAQAB
+-----END PUBLIC KEY-----```
+```
+
+### 登录（不需要短信）
+
+```
+POST https://api.xiaoheihe.cn/account/login/
+Content-Type: application/x-www-form-urlencoded
+
+body: phone_num={RSA加密+base64+urlencode}&pwd={RSA加密+base64+urlencode}
+```
+
+成功后 Cookie 中 `x_xhh_tokenid` 自动更新。
+
+### 短信验证码（仅忘记密码时用）
+
+| 步骤 | 端点 | 说明 |
+|------|------|------|
+| 1 | `POST /account/get_pwd_code/` | 获取短信验证码 |
+| 2 | `POST /account/get_pwd_sid/?code={SMS}` | 提交验证码获取 sid |
+| 3 | `POST /account/modify_pwd_with_code/?sid={sid}` | 用 sid 修改密码 |
 
 ### 退出
 
@@ -143,14 +168,7 @@ GET https://api.xiaoheihe.cn/task/replenish_sign_coin/
 GET /account/logout
 ```
 
-### 修改密码
-
-```
-POST /account/modify_pwd_with_code/?sid={sid}
-body: phone_num={RSA}&pwd={RSA}
-```
-
-**结论**: 登录使用 RSA 加密 + 短信验证码，Cookie 过期后需在 App 中重新登录并抓包获取新 `x_xhh_tokenid`，**无法通过脚本自动刷新**。
+**结论**: 脚本已内置 RSA 公钥，配置 `HEYBOX_PHONE` + `HEYBOX_PASSWORD` 即可自动登录刷新 Cookie。
 
 ---
 
