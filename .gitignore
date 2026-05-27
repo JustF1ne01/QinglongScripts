@@ -4,3 +4,4 @@ Password
 __pycache__
 .env
 *.har
+.valorant_ct

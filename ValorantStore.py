@@ -11,17 +11,11 @@ new Env("掌瓦每日商店推送")
 import os
 import json
 import requests
+from pathlib import Path
 from datetime import datetime, timezone, timedelta
 
 from utils import log_info, log_success, log_warning, log_error, beijing_time_str
 from notifier import send as notify_send, send_photos as notify_send_photos
-
-DEBUG = os.environ.get("VALORANT_DEBUG", "").strip().lower() in ("1", "true", "yes")
-
-
-def log_debug(msg: str):
-    if DEBUG:
-        print(f"[DEBUG] {msg}")
 
 # ==================== 用户配置 ====================
 VALORANT_COOKIE = os.environ.get("VALORANT_COOKIE", "")
@@ -29,15 +23,44 @@ TZ_BEIJING = timezone(timedelta(hours=8))
 
 # 品质映射
 QUALITY_MAP = {
-    "orange": ("橙色/传奇", "🟧"),
-    "purple": ("紫色/史诗", "🟪"),
-    "blue": ("蓝色/稀有", "🟦"),
-    "green": ("绿色", "🟩"),
-    "white": ("白色", "⬜"),
+    "orange": ("传奇", "🟧"),
+    "purple": ("卓越", "🟪"),
+    "blue": ("精选", "🟦"),
+    "green": ("奢华", "🟩"),
+    "yellow": ("终极", "🟨"),
 }
 
 API_BASE = "https://app.mval.qq.com"
 COMMON_PARAMS = "source_game_zone=agame&game_zone=agame"
+CT_FILE = Path(__file__).parent / ".valorant_ct"
+
+
+def parse_cookie(cookie: str) -> dict:
+    """解析 cookie 字符串为字典"""
+    cookie_dict = {}
+    for item in cookie.split(";"):
+        item = item.strip()
+        if "=" in item:
+            k, v = item.split("=", 1)
+            cookie_dict[k.strip()] = v.strip()
+    return cookie_dict
+
+
+def load_ct(cookie_dict: dict) -> str:
+    """加载 ct: 优先环境变量，其次本地文件"""
+    ct = cookie_dict.get("ct", "")
+    if ct:
+        return ct
+    if CT_FILE.exists():
+        ct = CT_FILE.read_text().strip()
+        if ct:
+            return ct
+    return ""
+
+
+def save_ct(ct: str):
+    """保存 ct 到本地文件，供下次运行使用"""
+    CT_FILE.write_text(ct)
 
 
 def create_session(cookie: str) -> requests.Session:
@@ -48,12 +71,9 @@ def create_session(cookie: str) -> requests.Session:
         "Accept-Encoding": "gzip",
         "Content-Type": "application/json; charset=utf-8",
     })
-    cookie_dict = {}
-    for item in cookie.split(";"):
-        item = item.strip()
-        if "=" in item:
-            k, v = item.split("=", 1)
-            cookie_dict[k.strip()] = v.strip()
+    cookie_dict = parse_cookie(cookie)
+    # ct 不是标准 cookie，不加入 session cookies
+    cookie_dict.pop("ct", None)
     requests.utils.add_dict_to_cookiejar(session.cookies, cookie_dict)
     return session
 
@@ -61,22 +81,83 @@ def create_session(cookie: str) -> requests.Session:
 def api_post(session: requests.Session, path: str, body: dict = None) -> dict:
     """通用 POST 请求"""
     url = f"{API_BASE}{path}?{COMMON_PARAMS}"
-    log_debug(f"POST {url}")
-    log_debug(f"请求体: {json.dumps(body or {}, ensure_ascii=False)}")
     try:
         resp = session.post(url, json=body or {}, timeout=15)
-        log_debug(f"响应状态码: {resp.status_code}")
-        log_debug(f"响应体: {resp.text[:2000]}")
-        return resp.json()
+        try:
+            return resp.json()
+        except json.JSONDecodeError:
+            # 服务端偶尔返回重复 JSON，取第一个合法对象
+            text = resp.text.strip()
+            decoder = json.JSONDecoder()
+            obj, _ = decoder.raw_decode(text)
+            return obj
     except Exception as e:
         log_error(f"API 请求失败 [{path}]: {e}")
         return {}
 
 
+def refresh_web_ticket(session: requests.Session, ct: str) -> tuple:
+    """刷新 web ticket (tid) 和 client ticket (ct)
+
+    流程（基于 HAR 抓包）:
+    1. refresh_client_ticket (用旧 ct) → 新 ct + wt (= tid cookie)
+    2. get_client_tmp_ticket (用新 ct) → ctt + sk
+
+    Returns: (new_ct, success)
+    """
+    cookie = {c.name: c.value for c in session.cookies}
+    user_id = cookie.get("userId", "")
+
+    # Step 1: refresh_client_ticket → 新 ct + wt
+    rct_body = {
+        "config_params": {"lang_type": 0},
+        "ct": ct,
+        "local_is_new_user": 0,
+        "user_id": user_id,
+        "source_game_zone": "agame",
+        "game_zone": "agame",
+    }
+    rct_result = api_post(session, "/go/auth/refresh_client_ticket", rct_body)
+    if rct_result.get("result") != 0:
+        log_warning(f"refresh_client_ticket 失败: {rct_result.get('msg', rct_result.get('err_msg', '未知'))}")
+        return ct, False
+
+    rct_data = rct_result.get("data", {})
+    ct_info = rct_data.get("ct_info", rct_data)
+    new_ct = ct_info.get("ct", "")
+    wt = ct_info.get("wt", "")
+
+    if new_ct:
+        log_success(f"client ticket (ct) 刷新成功")
+    if wt:
+        # 更新 tid cookie: 优先修改已有 cookie，否则新建
+        tid_set = False
+        for c in session.cookies:
+            if c.name == "tid":
+                c.value = wt
+                tid_set = True
+                break
+        if not tid_set:
+            session.cookies.set("tid", wt, domain="app.mval.qq.com", path="/")
+        log_success(f"web ticket (tid) 刷新成功 (有效期 {ct_info.get('refresh_wt_span', '?')}s)")
+
+    if not new_ct:
+        log_warning("refresh_client_ticket 未返回新 ct")
+        return ct, False
+
+    # Step 2: get_client_tmp_ticket → ctt + sk
+    ctt_body = {
+        "config_params": {"lang_type": 0},
+        "ct": new_ct,
+    }
+    api_post(session, "/go/auth/get_client_tmp_ticket", ctt_body)
+
+    return new_ct, bool(wt)
+
+
 def refresh_token(session: requests.Session) -> str:
     """刷新 access_token，返回新的 token"""
     cookie = {c.name: c.value for c in session.cookies}
-    log_debug(f"当前 Cookie keys: {list(cookie.keys())}")
     body = {
         "type": cookie.get("acctype", "qc"),
         "uuid": cookie.get("userId", ""),
@@ -85,7 +166,6 @@ def refresh_token(session: requests.Session) -> str:
         "game_zone": "agame",
     }
     result = api_post(session, "/go/auth/refresh_third_token", body)
-    log_debug(f"refresh_token 返回: result={result.get('result')}, msg={result.get('msg', result.get('err_msg', ''))}")
     if result.get("result") == 0:
         token = result.get("data", {}).get("access_token", "")
         if token:
@@ -103,13 +183,11 @@ def get_daily_store(session: requests.Session) -> tuple:
         "source_game_zone": "agame",
         "game_zone": "agame",
     })
-    log_debug(f"商店返回: result={result.get('result')}, data类型={type(result.get('data')).__name__}")
     if result.get("result") != 0:
         log_error(f"获取商店失败: {result.get('msg', '未知')}")
         return [], 0
 
     for section in result.get("data", []):
-        log_debug(f"商店分区: key={section.get('key')}, list数量={len(section.get('list', []))}")
         if section["key"] == "dailystore":
             items = section.get("list", [])
             end_ts = section.get("end_ts", 0)
@@ -129,7 +207,7 @@ def build_report(items: list, nickname: str, end_ts: int) -> str:
         price = item.get("rmb_price", "?")
         quality = item.get("quality", "")
         likes = item.get("like_num", "")
-        _, quality_emoji = QUALITY_MAP.get(quality, ("未知", "⬜"))
+        _, quality_emoji = QUALITY_MAP.get(quality, ("未知", "⬜️"))
 
         lines.append(f"{i+1}. {quality_emoji} {name}")
         lines.append(f"   💰 {price} 点券 | ❤️ {likes}")
@@ -141,30 +219,35 @@ def build_report(items: list, nickname: str, end_ts: int) -> str:
 
 
 def main():
-    log_debug(f"调试模式已开启")
     if not VALORANT_COOKIE:
         log_error("未配置 VALORANT_COOKIE，请在环境变量中设置")
         notify_send("掌瓦每日商店 错误", "❌ 未配置 VALORANT_COOKIE")
         return
 
-    session = create_session(VALORANT_COOKIE)
-    log_debug(f"Session 创建完成, Cookie 数量: {len(session.cookies)}")
+    cookie_dict = parse_cookie(VALORANT_COOKIE)
+    ct = load_ct(cookie_dict)
+    if not ct:
+        log_error("未配置 ct (client ticket)，请在 VALORANT_COOKIE 中添加 ct=xxx，或放到文件 " + str(CT_FILE))
+        notify_send("掌瓦每日商店 错误", "❌ 缺少 ct 参数，请在 VALORANT_COOKIE 中添加 ct=xxx")
+        return
 
-    # 刷新 token
+    session = create_session(VALORANT_COOKIE)
+
+    # 刷新认证: refresh_client_ticket → 新 ct + tid, refresh_third_token → 新 access_token
+    new_ct, _ = refresh_web_ticket(session, ct)
+    if new_ct and new_ct != ct:
+        save_ct(new_ct)
+
     refresh_token(session)
 
     # 获取绑定账号
     bind_result = api_post(session, "/go/auth/bind_relation_list")
-    log_debug(f"bind_relation_list 返回: {json.dumps(bind_result, ensure_ascii=False)[:500]}")
     bind_list = bind_result.get("data", {}).get("list", [])
     nickname = bind_list[0].get("nickName", "未知") if bind_list else "未知"
     log_info(f"绑定账号: {nickname}")
 
     # 获取每日商店
     items, end_ts = get_daily_store(session)
-    if items:
-        for i, item in enumerate(items):
-            log_debug(f"皮肤{i+1}: {item.get('goods_name')} | 品质={item.get('quality')} | 价格={item.get('rmb_price')} | 图片={item.get('goods_pic', '')[:80]}")
     if not items:
         log_warning("未获取到商店内容，可能今日未刷新")
         notify_send("掌瓦每日商店", "⚠️ 未获取到商店内容，请检查 Cookie 或稍后重试")
@@ -182,7 +265,7 @@ def main():
         image_url = item.get("goods_pic", "")
         if not image_url:
             continue
-        quality_name, quality_emoji = QUALITY_MAP.get(quality, ("未知", "⬜"))
+        quality_name, quality_emoji = QUALITY_MAP.get(quality, ("未知", "⬜️"))
         photos.append({
             "image": image_url,
             "caption": f"{quality_emoji} {name}  |  💰 {price} 点券 ({quality_name})",
