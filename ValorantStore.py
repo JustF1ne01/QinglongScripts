@@ -9,11 +9,19 @@ new Env("掌瓦每日商店推送")
 """
 
 import os
+import json
 import requests
 from datetime import datetime, timezone, timedelta
 
 from utils import log_info, log_success, log_warning, log_error, beijing_time_str
 from notifier import send as notify_send, send_photos as notify_send_photos
+
+DEBUG = os.environ.get("VALORANT_DEBUG", "").strip().lower() in ("1", "true", "yes")
+
+
+def log_debug(msg: str):
+    if DEBUG:
+        print(f"[DEBUG] {msg}")
 
 # ==================== 用户配置 ====================
 VALORANT_COOKIE = os.environ.get("VALORANT_COOKIE", "")
@@ -53,8 +61,12 @@ def create_session(cookie: str) -> requests.Session:
 def api_post(session: requests.Session, path: str, body: dict = None) -> dict:
     """通用 POST 请求"""
     url = f"{API_BASE}{path}?{COMMON_PARAMS}"
+    log_debug(f"POST {url}")
+    log_debug(f"请求体: {json.dumps(body or {}, ensure_ascii=False)}")
     try:
         resp = session.post(url, json=body or {}, timeout=15)
+        log_debug(f"响应状态码: {resp.status_code}")
+        log_debug(f"响应体: {resp.text[:2000]}")
         return resp.json()
     except Exception as e:
         log_error(f"API 请求失败 [{path}]: {e}")
@@ -64,6 +76,7 @@ def api_post(session: requests.Session, path: str, body: dict = None) -> dict:
 def refresh_token(session: requests.Session) -> str:
     """刷新 access_token，返回新的 token"""
     cookie = {c.name: c.value for c in session.cookies}
+    log_debug(f"当前 Cookie keys: {list(cookie.keys())}")
     body = {
         "type": cookie.get("acctype", "qc"),
         "uuid": cookie.get("userId", ""),
@@ -72,6 +85,7 @@ def refresh_token(session: requests.Session) -> str:
         "game_zone": "agame",
     }
     result = api_post(session, "/go/auth/refresh_third_token", body)
+    log_debug(f"refresh_token 返回: result={result.get('result')}, msg={result.get('msg', result.get('err_msg', ''))}")
     if result.get("result") == 0:
         token = result.get("data", {}).get("access_token", "")
         if token:
@@ -89,11 +103,13 @@ def get_daily_store(session: requests.Session) -> tuple:
         "source_game_zone": "agame",
         "game_zone": "agame",
     })
+    log_debug(f"商店返回: result={result.get('result')}, data类型={type(result.get('data')).__name__}")
     if result.get("result") != 0:
         log_error(f"获取商店失败: {result.get('msg', '未知')}")
         return [], 0
 
     for section in result.get("data", []):
+        log_debug(f"商店分区: key={section.get('key')}, list数量={len(section.get('list', []))}")
         if section["key"] == "dailystore":
             items = section.get("list", [])
             end_ts = section.get("end_ts", 0)
@@ -125,24 +141,30 @@ def build_report(items: list, nickname: str, end_ts: int) -> str:
 
 
 def main():
+    log_debug(f"调试模式已开启")
     if not VALORANT_COOKIE:
         log_error("未配置 VALORANT_COOKIE，请在环境变量中设置")
         notify_send("掌瓦每日商店 错误", "❌ 未配置 VALORANT_COOKIE")
         return
 
     session = create_session(VALORANT_COOKIE)
+    log_debug(f"Session 创建完成, Cookie 数量: {len(session.cookies)}")
 
     # 刷新 token
     refresh_token(session)
 
     # 获取绑定账号
     bind_result = api_post(session, "/go/auth/bind_relation_list")
+    log_debug(f"bind_relation_list 返回: {json.dumps(bind_result, ensure_ascii=False)[:500]}")
     bind_list = bind_result.get("data", {}).get("list", [])
     nickname = bind_list[0].get("nickName", "未知") if bind_list else "未知"
     log_info(f"绑定账号: {nickname}")
 
     # 获取每日商店
     items, end_ts = get_daily_store(session)
+    if items:
+        for i, item in enumerate(items):
+            log_debug(f"皮肤{i+1}: {item.get('goods_name')} | 品质={item.get('quality')} | 价格={item.get('rmb_price')} | 图片={item.get('goods_pic', '')[:80]}")
     if not items:
         log_warning("未获取到商店内容，可能今日未刷新")
         notify_send("掌瓦每日商店", "⚠️ 未获取到商店内容，请检查 Cookie 或稍后重试")
