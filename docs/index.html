@@ -91,9 +91,14 @@
                 <div class="text-4xl mb-4 text-purple-400">1️⃣</div>
                 <h3 class="text-xl font-semibold mb-3">添加订阅</h3>
                 <p class="text-gray-400">在青龙面板中添加仓库订阅链接</p>
-                <code class="block mt-3 p-3 bg-gray-900 rounded text-sm text-cyan-400 break-all">
-                    https://github.com/CN-Grace/QinglongScripts.git
-                </code>
+                <div class="relative mt-3">
+                    <code id="repo-url" class="block p-3 bg-gray-900 rounded text-sm text-cyan-400 break-all pr-12">
+                        https://github.com/CN-Grace/QinglongScripts.git
+                    </code>
+                    <button onclick="copyToClipboard()" class="absolute right-2 top-1/2 -translate-y-1/2 bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded text-xs transition-colors">
+                        <i class="fas fa-copy mr-1"></i>复制
+                    </button>
+                </div>
             </div>
             <div class="script-card rounded-xl p-6 card-hover transition-all duration-300">
                 <div class="text-4xl mb-4 text-cyan-400">2️⃣</div>
@@ -124,206 +129,242 @@
                 <!-- Airport -->
                 <div class="script-card rounded-xl p-5 card-hover transition-all duration-300">
                     <div class="flex items-center mb-3">
-                        <span class="text-3xl mr-3">✈️</span>
+                        <img src="src/scripts/airport.png" class="w-10 h-10 mr-3 rounded-lg">
                         <div>
                             <h3 class="font-semibold">Airport.py</h3>
                             <span class="text-xs text-gray-400">机场签到</span>
                         </div>
                     </div>
-                    <div class="flex justify-between items-center mt-4">
-                        <span class="badge text-xs px-2 py-1 rounded">0 0 * * *</span>
-                        <a href="api/Airport.md" class="text-purple-400 hover:text-purple-300 text-sm">
-                            API 文档 →
-                        </a>
+                    <div class="mt-3">
+                        <div class="flex justify-between items-center">
+                            <span class="badge text-xs px-2 py-1 rounded">0 0 * * *</span>
+                            <a href="api/Airport.md" class="text-purple-400 hover:text-purple-300 text-sm">
+                                API 文档 →
+                            </a>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-2">⏰ 每天午夜执行</p>
                     </div>
                 </div>
 
                 <!-- Aliyun -->
                 <div class="script-card rounded-xl p-5 card-hover transition-all duration-300">
                     <div class="flex items-center mb-3">
-                        <span class="text-3xl mr-3">☁️</span>
+                        <img src="src/scripts/aliyun.png" class="w-10 h-10 mr-3 rounded-lg">
                         <div>
                             <h3 class="font-semibold">Aliyun.py</h3>
                             <span class="text-xs text-gray-400">阿里云盘签到</span>
                         </div>
                     </div>
-                    <div class="flex justify-between items-center mt-4">
-                        <span class="badge text-xs px-2 py-1 rounded">0 0 * * *</span>
-                        <a href="api/Aliyun.md" class="text-purple-400 hover:text-purple-300 text-sm">
-                            API 文档 →
-                        </a>
+                    <div class="mt-3">
+                        <div class="flex justify-between items-center">
+                            <span class="badge text-xs px-2 py-1 rounded">0 0 * * *</span>
+                            <a href="api/Aliyun.md" class="text-purple-400 hover:text-purple-300 text-sm">
+                                API 文档 →
+                            </a>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-2">⏰ 每天午夜执行</p>
                     </div>
                 </div>
 
                 <!-- Bilibili -->
                 <div class="script-card rounded-xl p-5 card-hover transition-all duration-300">
                     <div class="flex items-center mb-3">
-                        <span class="text-3xl mr-3">📺</span>
+                        <img src="src/scripts/bilibili.png" class="w-10 h-10 mr-3 rounded-lg">
                         <div>
                             <h3 class="font-semibold">Bilibili.py</h3>
                             <span class="text-xs text-gray-400">B站每日任务</span>
                         </div>
                     </div>
-                    <div class="flex justify-between items-center mt-4">
-                        <span class="badge text-xs px-2 py-1 rounded">0 0 * * *</span>
-                        <a href="api/Bilibili.md" class="text-purple-400 hover:text-purple-300 text-sm">
-                            API 文档 →
-                        </a>
+                    <div class="mt-3">
+                        <div class="flex justify-between items-center">
+                            <span class="badge text-xs px-2 py-1 rounded">0 0 * * *</span>
+                            <a href="api/Bilibili.md" class="text-purple-400 hover:text-purple-300 text-sm">
+                                API 文档 →
+                            </a>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-2">⏰ 每天午夜执行（漫画签到/投币/观看/分享）</p>
                     </div>
                 </div>
 
                 <!-- HelloGithub -->
                 <div class="script-card rounded-xl p-5 card-hover transition-all duration-300">
                     <div class="flex items-center mb-3">
-                        <span class="text-3xl mr-3">🐙</span>
+                        <img src="src/scripts/hellogithub.png" class="w-10 h-10 mr-3 rounded-lg">
                         <div>
                             <h3 class="font-semibold">HelloGithub.py</h3>
                             <span class="text-xs text-gray-400">HelloGithub 月刊</span>
                         </div>
                     </div>
-                    <div class="flex justify-between items-center mt-4">
-                        <span class="badge text-xs px-2 py-1 rounded">0 8 1 * *</span>
-                        <a href="api/HelloGithub.md" class="text-purple-400 hover:text-purple-300 text-sm">
-                            API 文档 →
-                        </a>
+                    <div class="mt-3">
+                        <div class="flex justify-between items-center">
+                            <span class="badge text-xs px-2 py-1 rounded">0 8 1 * *</span>
+                            <a href="api/HelloGithub.md" class="text-purple-400 hover:text-purple-300 text-sm">
+                                API 文档 →
+                            </a>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-2">⏰ 每月1号早上8点执行</p>
                     </div>
                 </div>
 
                 <!-- Nodeseek -->
                 <div class="script-card rounded-xl p-5 card-hover transition-all duration-300">
                     <div class="flex items-center mb-3">
-                        <span class="text-3xl mr-3">💬</span>
+                        <img src="src/scripts/nodeseek.png" class="w-10 h-10 mr-3 rounded-lg">
                         <div>
                             <h3 class="font-semibold">Nodeseek.py</h3>
                             <span class="text-xs text-gray-400">Nodeseek 签到</span>
                         </div>
                     </div>
-                    <div class="flex justify-between items-center mt-4">
-                        <span class="badge text-xs px-2 py-1 rounded">0 0 * * *</span>
-                        <a href="api/Nodeseek.md" class="text-purple-400 hover:text-purple-300 text-sm">
-                            API 文档 →
-                        </a>
+                    <div class="mt-3">
+                        <div class="flex justify-between items-center">
+                            <span class="badge text-xs px-2 py-1 rounded">0 0 * * *</span>
+                            <a href="api/Nodeseek.md" class="text-purple-400 hover:text-purple-300 text-sm">
+                                API 文档 →
+                            </a>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-2">⏰ 每天午夜执行</p>
                     </div>
                 </div>
 
                 <!-- SSL -->
                 <div class="script-card rounded-xl p-5 card-hover transition-all duration-300">
                     <div class="flex items-center mb-3">
-                        <span class="text-3xl mr-3">🔒</span>
+                        <img src="src/scripts/ssl.png" class="w-10 h-10 mr-3 rounded-lg">
                         <div>
                             <h3 class="font-semibold">SSL.py</h3>
                             <span class="text-xs text-gray-400">SSL 证书检查</span>
                         </div>
                     </div>
-                    <div class="flex justify-between items-center mt-4">
-                        <span class="badge text-xs px-2 py-1 rounded">0 0 * * *</span>
-                        <a href="api/SSL.md" class="text-purple-400 hover:text-purple-300 text-sm">
-                            API 文档 →
-                        </a>
+                    <div class="mt-3">
+                        <div class="flex justify-between items-center">
+                            <span class="badge text-xs px-2 py-1 rounded">0 0 * * *</span>
+                            <a href="api/SSL.md" class="text-purple-400 hover:text-purple-300 text-sm">
+                                API 文档 →
+                            </a>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-2">⏰ 每天午夜执行，检查证书到期时间</p>
                     </div>
                 </div>
 
                 <!-- Skyland -->
                 <div class="script-card rounded-xl p-5 card-hover transition-all duration-300">
                     <div class="flex items-center mb-3">
-                        <span class="text-3xl mr-3">🏝️</span>
+                        <img src="src/scripts/skyland.png" class="w-10 h-10 mr-3 rounded-lg">
                         <div>
                             <h3 class="font-semibold">skyland.py</h3>
                             <span class="text-xs text-gray-400">森空岛签到</span>
                         </div>
                     </div>
-                    <div class="flex justify-between items-center mt-4">
-                        <span class="badge text-xs px-2 py-1 rounded">0 8 * * *</span>
-                        <a href="api/Skyland.md" class="text-purple-400 hover:text-purple-300 text-sm">
-                            API 文档 →
-                        </a>
+                    <div class="mt-3">
+                        <div class="flex justify-between items-center">
+                            <span class="badge text-xs px-2 py-1 rounded">0 8 * * *</span>
+                            <a href="api/Skyland.md" class="text-purple-400 hover:text-purple-300 text-sm">
+                                API 文档 →
+                            </a>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-2">⏰ 每天早上8点执行（明日方舟/终末地）</p>
                     </div>
                 </div>
 
                 <!-- Sync_Password -->
                 <div class="script-card rounded-xl p-5 card-hover transition-all duration-300">
                     <div class="flex items-center mb-3">
-                        <span class="text-3xl mr-3">🔑</span>
+                        <img src="src/scripts/sync_password.png" class="w-10 h-10 mr-3 rounded-lg">
                         <div>
                             <h3 class="font-semibold">Sync_Password.py</h3>
                             <span class="text-xs text-gray-400">Bitwarden 备份</span>
                         </div>
                     </div>
-                    <div class="flex justify-between items-center mt-4">
-                        <span class="badge text-xs px-2 py-1 rounded">0 0 * * *</span>
-                        <a href="api/Sync_Password.md" class="text-purple-400 hover:text-purple-300 text-sm">
-                            API 文档 →
-                        </a>
+                    <div class="mt-3">
+                        <div class="flex justify-between items-center">
+                            <span class="badge text-xs px-2 py-1 rounded">0 0 * * *</span>
+                            <a href="api/Sync_Password.md" class="text-purple-400 hover:text-purple-300 text-sm">
+                                API 文档 →
+                            </a>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-2">⏰ 每天午夜执行，同步密码库</p>
                     </div>
                 </div>
 
                 <!-- Tieba -->
                 <div class="script-card rounded-xl p-5 card-hover transition-all duration-300">
                     <div class="flex items-center mb-3">
-                        <span class="text-3xl mr-3">💬</span>
+                        <img src="src/scripts/tieba.png" class="w-10 h-10 mr-3 rounded-lg">
                         <div>
                             <h3 class="font-semibold">Tieba.py</h3>
                             <span class="text-xs text-gray-400">百度贴吧签到</span>
                         </div>
                     </div>
-                    <div class="flex justify-between items-center mt-4">
-                        <span class="badge text-xs px-2 py-1 rounded">0 0 * * *</span>
-                        <a href="api/Tieba.md" class="text-purple-400 hover:text-purple-300 text-sm">
-                            API 文档 →
-                        </a>
+                    <div class="mt-3">
+                        <div class="flex justify-between items-center">
+                            <span class="badge text-xs px-2 py-1 rounded">0 0 * * *</span>
+                            <a href="api/Tieba.md" class="text-purple-400 hover:text-purple-300 text-sm">
+                                API 文档 →
+                            </a>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-2">⏰ 每天午夜执行</p>
                     </div>
                 </div>
 
                 <!-- ValorantStore -->
                 <div class="script-card rounded-xl p-5 card-hover transition-all duration-300">
                     <div class="flex items-center mb-3">
-                        <span class="text-3xl mr-3">🔫</span>
+                        <img src="src/scripts/valorantstore.png" class="w-10 h-10 mr-3 rounded-lg">
                         <div>
                             <h3 class="font-semibold">ValorantStore.py</h3>
-                            <span class="text-xs text-gray-400">掌瓦每日商店</span>
+                            <span class="text-xs text-gray-400">Valorant 商店</span>
                         </div>
                     </div>
-                    <div class="flex justify-between items-center mt-4">
-                        <span class="badge text-xs px-2 py-1 rounded">15 8 * * *</span>
-                        <a href="api/ValorantStore.md" class="text-purple-400 hover:text-purple-300 text-sm">
-                            API 文档 →
-                        </a>
+                    <div class="mt-3">
+                        <div class="flex justify-between items-center">
+                            <span class="badge text-xs px-2 py-1 rounded">15 8 * * *</span>
+                            <a href="api/ValorantStore.md" class="text-purple-400 hover:text-purple-300 text-sm">
+                                API 文档 →
+                            </a>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-2">⏰ 每天早上8:15执行，查询每日皮肤</p>
                     </div>
                 </div>
 
                 <!-- YysHuijuan -->
                 <div class="script-card rounded-xl p-5 card-hover transition-all duration-300 border-purple-500/50">
                     <div class="flex items-center mb-3">
-                        <span class="text-3xl mr-3">🎮</span>
+                        <img src="src/scripts/yys.png" class="w-10 h-10 mr-3 rounded-lg">
                         <div>
                             <h3 class="font-semibold">YysHuijuan.py</h3>
                             <span class="text-xs text-gray-400">阴阳师绘卷查询</span>
                         </div>
                         <span class="ml-auto badge text-xs px-2 py-1 rounded">NEW</span>
                     </div>
-                    <div class="flex justify-between items-center mt-4">
-                        <span class="badge text-xs px-2 py-1 rounded">20 0 * * *</span>
-                        <a href="api/YysHuijuan.md" class="text-purple-400 hover:text-purple-300 text-sm">
-                            API 文档 →
-                        </a>
+                    <div class="mt-3">
+                        <div class="flex justify-between items-center">
+                            <span class="badge text-xs px-2 py-1 rounded">20 0 * * *</span>
+                            <a href="api/YysHuijuan.md" class="text-purple-400 hover:text-purple-300 text-sm">
+                                API 文档 →
+                            </a>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-2">⏰ 每天午夜0:20执行，查询绘卷碎片</p>
                     </div>
                 </div>
 
                 <!-- YysHuijuanTime -->
                 <div class="script-card rounded-xl p-5 card-hover transition-all duration-300 border-purple-500/50">
                     <div class="flex items-center mb-3">
-                        <span class="text-3xl mr-3">🎮</span>
+                        <img src="src/scripts/yys.png" class="w-10 h-10 mr-3 rounded-lg">
                         <div>
                             <h3 class="font-semibold">YysHuijuanTime.py</h3>
                             <span class="text-xs text-gray-400">阴阳师绘卷时间获取</span>
                         </div>
                         <span class="ml-auto badge text-xs px-2 py-1 rounded">NEW</span>
                     </div>
-                    <div class="flex justify-between items-center mt-4">
-                        <span class="badge text-xs px-2 py-1 rounded">0 0 * * *</span>
-                        <a href="api/YysHuijuanTime.md" class="text-purple-400 hover:text-purple-300 text-sm">
-                            API 文档 →
-                        </a>
+                    <div class="mt-3">
+                        <div class="flex justify-between items-center">
+                            <span class="badge text-xs px-2 py-1 rounded">0 0 * * *</span>
+                            <a href="api/YysHuijuanTime.md" class="text-purple-400 hover:text-purple-300 text-sm">
+                                API 文档 →
+                            </a>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-2">⏰ 每天午夜执行，获取活动时间</p>
                     </div>
                 </div>
             </div>
@@ -339,42 +380,98 @@
             <p class="text-gray-300 mb-6 text-center">
                 所有脚本通过 <code class="bg-gray-800 px-2 py-1 rounded text-cyan-400">notifier.py</code> 统一发送通知，支持以下 <span class="text-purple-400 font-bold">23</span> 种渠道：
             </p>
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div class="text-center p-3 bg-gray-800/50 rounded-lg">
-                    <div class="text-2xl mb-2">🔔</div>
+            <div class="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                <div class="text-center p-3 bg-gray-800/50 rounded-lg hover:bg-gray-700/50 transition-colors">
+                    <img src="src/notify/bark.png" class="w-10 h-10 mx-auto mb-2 rounded">
                     <div class="text-sm">Bark</div>
                 </div>
-                <div class="text-center p-3 bg-gray-800/50 rounded-lg">
-                    <div class="text-2xl mb-2">🤖</div>
-                    <div class="text-sm">钉钉机器人</div>
+                <div class="text-center p-3 bg-gray-800/50 rounded-lg hover:bg-gray-700/50 transition-colors">
+                    <img src="src/notify/console.png" class="w-10 h-10 mx-auto mb-2 rounded">
+                    <div class="text-sm">控制台</div>
                 </div>
-                <div class="text-center p-3 bg-gray-800/50 rounded-lg">
-                    <div class="text-2xl mb-2">🪶</div>
-                    <div class="text-sm">飞书机器人</div>
+                <div class="text-center p-3 bg-gray-800/50 rounded-lg hover:bg-gray-700/50 transition-colors">
+                    <img src="src/notify/dingtalk.png" class="w-10 h-10 mx-auto mb-2 rounded">
+                    <div class="text-sm">钉钉</div>
                 </div>
-                <div class="text-center p-3 bg-gray-800/50 rounded-lg">
-                    <div class="text-2xl mb-2">📡</div>
+                <div class="text-center p-3 bg-gray-800/50 rounded-lg hover:bg-gray-700/50 transition-colors">
+                    <img src="src/notify/feishu.png" class="w-10 h-10 mx-auto mb-2 rounded">
+                    <div class="text-sm">飞书</div>
+                </div>
+                <div class="text-center p-3 bg-gray-800/50 rounded-lg hover:bg-gray-700/50 transition-colors">
+                    <img src="src/notify/go-cqhttp.png" class="w-10 h-10 mx-auto mb-2 rounded">
+                    <div class="text-sm">go-cqhttp</div>
+                </div>
+                <div class="text-center p-3 bg-gray-800/50 rounded-lg hover:bg-gray-700/50 transition-colors">
+                    <img src="src/notify/gotify.png" class="w-10 h-10 mx-auto mb-2 rounded">
                     <div class="text-sm">Gotify</div>
                 </div>
-                <div class="text-center p-3 bg-gray-800/50 rounded-lg">
-                    <div class="text-2xl mb-2">📢</div>
+                <div class="text-center p-3 bg-gray-800/50 rounded-lg hover:bg-gray-700/50 transition-colors">
+                    <img src="src/notify/igot.png" class="w-10 h-10 mx-auto mb-2 rounded">
+                    <div class="text-sm">iGot</div>
+                </div>
+                <div class="text-center p-3 bg-gray-800/50 rounded-lg hover:bg-gray-700/50 transition-colors">
+                    <img src="src/notify/serverchan.png" class="w-10 h-10 mx-auto mb-2 rounded">
                     <div class="text-sm">Server酱</div>
                 </div>
-                <div class="text-center p-3 bg-gray-800/50 rounded-lg">
-                    <div class="text-2xl mb-2">➕</div>
+                <div class="text-center p-3 bg-gray-800/50 rounded-lg hover:bg-gray-700/50 transition-colors">
+                    <img src="src/notify/pushdeer.png" class="w-10 h-10 mx-auto mb-2 rounded">
+                    <div class="text-sm">PushDeer</div>
+                </div>
+                <div class="text-center p-3 bg-gray-800/50 rounded-lg hover:bg-gray-700/50 transition-colors">
+                    <img src="src/notify/synology.png" class="w-10 h-10 mx-auto mb-2 rounded">
+                    <div class="text-sm">Synology</div>
+                </div>
+                <div class="text-center p-3 bg-gray-800/50 rounded-lg hover:bg-gray-700/50 transition-colors">
+                    <img src="src/notify/pushplus.png" class="w-10 h-10 mx-auto mb-2 rounded">
                     <div class="text-sm">PushPlus</div>
                 </div>
-                <div class="text-center p-3 bg-gray-800/50 rounded-lg">
-                    <div class="text-2xl mb-2">✈️</div>
+                <div class="text-center p-3 bg-gray-800/50 rounded-lg hover:bg-gray-700/50 transition-colors">
+                    <img src="src/notify/weplusbot.png" class="w-10 h-10 mx-auto mb-2 rounded">
+                    <div class="text-sm">微加机器人</div>
+                </div>
+                <div class="text-center p-3 bg-gray-800/50 rounded-lg hover:bg-gray-700/50 transition-colors">
+                    <img src="src/notify/qmsg.png" class="w-10 h-10 mx-auto mb-2 rounded">
+                    <div class="text-sm">Qmsg酱</div>
+                </div>
+                <div class="text-center p-3 bg-gray-800/50 rounded-lg hover:bg-gray-700/50 transition-colors">
+                    <img src="src/notify/wechat-work.png" class="w-10 h-10 mx-auto mb-2 rounded">
+                    <div class="text-sm">企业微信</div>
+                </div>
+                <div class="text-center p-3 bg-gray-800/50 rounded-lg hover:bg-gray-700/50 transition-colors">
+                    <img src="src/notify/telegram.png" class="w-10 h-10 mx-auto mb-2 rounded">
                     <div class="text-sm">Telegram</div>
                 </div>
-                <div class="text-center p-3 bg-gray-800/50 rounded-lg">
-                    <div class="text-2xl mb-2">📧</div>
+                <div class="text-center p-3 bg-gray-800/50 rounded-lg hover:bg-gray-700/50 transition-colors">
+                    <img src="src/notify/aibotk.png" class="w-10 h-10 mx-auto mb-2 rounded">
+                    <div class="text-sm">智能微秘书</div>
+                </div>
+                <div class="text-center p-3 bg-gray-800/50 rounded-lg hover:bg-gray-700/50 transition-colors">
+                    <img src="src/notify/smtp.png" class="w-10 h-10 mx-auto mb-2 rounded">
                     <div class="text-sm">SMTP 邮件</div>
+                </div>
+                <div class="text-center p-3 bg-gray-800/50 rounded-lg hover:bg-gray-700/50 transition-colors">
+                    <img src="src/notify/pushme.png" class="w-10 h-10 mx-auto mb-2 rounded">
+                    <div class="text-sm">PushMe</div>
+                </div>
+                <div class="text-center p-3 bg-gray-800/50 rounded-lg hover:bg-gray-700/50 transition-colors">
+                    <img src="src/notify/chronocat.png" class="w-10 h-10 mx-auto mb-2 rounded">
+                    <div class="text-sm">CHRONOCAT</div>
+                </div>
+                <div class="text-center p-3 bg-gray-800/50 rounded-lg hover:bg-gray-700/50 transition-colors">
+                    <img src="src/notify/webhook.png" class="w-10 h-10 mx-auto mb-2 rounded">
+                    <div class="text-sm">Webhook</div>
+                </div>
+                <div class="text-center p-3 bg-gray-800/50 rounded-lg hover:bg-gray-700/50 transition-colors">
+                    <img src="src/notify/ntfy.png" class="w-10 h-10 mx-auto mb-2 rounded">
+                    <div class="text-sm">ntfy</div>
+                </div>
+                <div class="text-center p-3 bg-gray-800/50 rounded-lg hover:bg-gray-700/50 transition-colors">
+                    <img src="src/notify/wxpusher.png" class="w-10 h-10 mx-auto mb-2 rounded">
+                    <div class="text-sm">WxPusher</div>
                 </div>
             </div>
             <p class="text-center text-gray-400 mt-6 text-sm">
-                还支持 go-cqhttp、企业微信、Qmsg酱、PushDeer、ntfy 等更多渠道...
+                共支持 23 种通知渠道，配置对应环境变量即可启用
             </p>
         </div>
     </section>
@@ -404,6 +501,23 @@
                 });
             });
         });
+
+        // Copy to clipboard function
+        function copyToClipboard() {
+            const text = 'https://github.com/CN-Grace/QinglongScripts.git';
+            navigator.clipboard.writeText(text).then(() => {
+                const btn = event.target.closest('button');
+                const originalText = btn.innerHTML;
+                btn.innerHTML = '<i class="fas fa-check mr-1"></i>已复制';
+                btn.classList.remove('bg-purple-600', 'hover:bg-purple-700');
+                btn.classList.add('bg-green-600');
+                setTimeout(() => {
+                    btn.innerHTML = originalText;
+                    btn.classList.remove('bg-green-600');
+                    btn.classList.add('bg-purple-600', 'hover:bg-purple-700');
+                }, 2000);
+            });
+        }
     </script>
 </body>
 </html>
