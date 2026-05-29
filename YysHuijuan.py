@@ -24,11 +24,11 @@ TURING_API = "https://turing.gameyw.netease.com"
 ROLE_ID = "585bd32afe992b27a4ce9bb3"
 SERVER = "15004"
 SIGN_SECRET = "affa62e3b7376a0cbd20ea2f6c07072f"
-VERSION = "4.15.0"
+VERSION = "4.18.2"
 SOP_ID = "68ea0f7c38aa9e6367e781a1"
 
 TH = {"Content-Type": "application/json",
-    "User-Agent": "Mozilla/5.0 (Linux; Android 16; 25102RKBEC Build/BP2A.250605.031.A3; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/148.0.7778.120 Mobile Safari/537.36 Godlike/4.15.0 (channel/open_tencent) UEPay/com.netease.gl/android7.12.28",
+    "User-Agent": "Mozilla/5.0 (Linux; Android 16; 25102RKBEC Build/BP2A.250605.031.A3; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/148.0.7778.120 Mobile Safari/537.36 Godlike/4.18.2 (channel/open_tencent) UEPay/com.netease.gl/android7.12.28",
     "Origin": "https://game.16163.com", "Referer": "https://game.16163.com/", "x-requested-with": "com.netease.gl"}
 
 report_data = {}
