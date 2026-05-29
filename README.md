@@ -22,7 +22,7 @@
 |:---:|:---|
 | **名称** | `QinglongScripts` |
 | **类型** | 公开仓库 |
-| **链接** | `https://github.com/CN-Grace/QinglongScripts.git` |
+| **链接** | `https://github.com/CN-Grace/QinglongScripts.git` [📋 复制](#) |
 | **定时类型** | crontab |
 | **定时规则** | `0 0 * * *`（每天自动更新订阅） |
 | **白名单** | 留空（拉取全部脚本） |
@@ -30,26 +30,37 @@
 
 > 💡 青龙面板会根据脚本中的 `cron` 注释自动创建定时任务。`notifier.py` 和 `utils.py` 不含 cron 注释，不会被创建任务，可正常拉取和更新。
 
+<details>
+<summary>📋 一键复制订阅链接</summary>
+
+```
+https://github.com/CN-Grace/QinglongScripts.git
+```
+
+</details>
+
 ---
 
 ## 📜 脚本列表 | Script List
 
-| 脚本 | 功能 | 定时规则 | 说明 |
-|:---:|:---:|:---:|:---|
-| ✈️ Airport.py | 机场签到 | `0 0 * * *` | 每天 0:00 |
-| ☁️ Aliyun.py | 阿里云盘签到 | `0 0 * * *` | 每天 0:00 |
-| 📺 Bilibili.py | B站每日任务 | `0 0 * * *` | 每天 0:00 |
-| 🐙 HelloGithub.py | HelloGithub 月刊 | `0 8 1 * *` | 每月1日 8:00 |
-| 💬 Nodeseek.py | Nodeseek 签到 | `0 0 * * *` | 每天 0:00 |
-| 🔒 SSL.py | SSL 证书检查 | `0 0 * * *` | 每天 0:00 |
-| 🏝️ skyland.py | 森空岛签到 | `0 8 * * *` | 每天 8:00 |
-| 🔑 Sync_Password.py | Bitwarden 备份 | `0 0 * * *` | 每天 0:00 |
-| 💬 Tieba.py | 百度贴吧签到 | `0 0 * * *` | 每天 0:00 |
-| 🔫 ValorantStore.py | 掌瓦每日商店 | `15 8 * * *` | 每天 8:15 |
-| 🎮 YysHuijuan.py | 阴阳师绘卷查询 | `20 0 * * *` | 每天 0:20 |
-| 🎮 YysHuijuanTime.py | 阴阳师绘卷时间获取 | `0 0 * * *` | 每天 0:00 |
-| 🔔 notifier.py | 通知模块 | — | 公共依赖，非定时任务 |
-| 🧰 utils.py | 公共工具 | — | 公共依赖，非定时任务 |
+> 💡 脚本图标位于 [`src/scripts/`](src/scripts/) 目录
+
+| 图标 | 脚本 | 功能 | 定时规则 | 说明 |
+|:---:|:---:|:---:|:---:|:---|
+| <img src="src/scripts/airport.png" width="24"> | Airport.py | 机场签到 | `0 0 * * *` | 每天午夜执行 |
+| <img src="src/scripts/aliyun.png" width="24"> | Aliyun.py | 阿里云盘签到 | `0 0 * * *` | 每天午夜执行 |
+| <img src="src/scripts/bilibili.png" width="24"> | Bilibili.py | B站每日任务 | `0 0 * * *` | 每天午夜执行（漫画签到/投币/观看/分享） |
+| <img src="src/scripts/hellogithub.png" width="24"> | HelloGithub.py | HelloGithub 月刊 | `0 8 1 * *` | 每月1号早上8点执行 |
+| <img src="src/scripts/nodeseek.png" width="24"> | Nodeseek.py | Nodeseek 签到 | `0 0 * * *` | 每天午夜执行 |
+| <img src="src/scripts/ssl.png" width="24"> | SSL.py | SSL 证书检查 | `0 0 * * *` | 每天午夜执行，检查证书到期时间 |
+| <img src="src/scripts/skyland.png" width="24"> | skyland.py | 森空岛签到 | `0 8 * * *` | 每天早上8点执行（明日方舟/终末地） |
+| <img src="src/scripts/sync_password.png" width="24"> | Sync_Password.py | Bitwarden 备份 | `0 0 * * *` | 每天午夜执行，同步密码库 |
+| <img src="src/scripts/tieba.png" width="24"> | Tieba.py | 百度贴吧签到 | `0 0 * * *` | 每天午夜执行 |
+| <img src="src/scripts/valorantstore.png" width="24"> | ValorantStore.py | Valorant 商店 | `15 8 * * *` | 每天早上8:15执行，查询每日皮肤 |
+| <img src="src/scripts/yys.png" width="24"> | YysHuijuan.py | 阴阳师绘卷查询 | `20 0 * * *` | 每天午夜0:20执行，查询绘卷碎片 |
+| <img src="src/scripts/yys.png" width="24"> | YysHuijuanTime.py | 阴阳师绘卷时间获取 | `0 0 * * *` | 每天午夜执行，获取活动时间 |
+| — | notifier.py | 通知模块 | — | 公共依赖，非定时任务 |
+| — | utils.py | 公共工具 | — | 公共依赖，非定时任务 |
 
 ---
 
@@ -80,33 +91,35 @@
 
 ## 📣 通知推送 | Notifications
 
+> 💡 通知渠道图标位于 [`src/notify/`](src/notify/) 目录
+
 所有脚本通过 `notifier.py` 统一发送通知，支持以下 **23** 种渠道：
 
-| # | 渠道 | 必填环境变量 | 可选环境变量 |
+| 图标 | 渠道 | 必填环境变量 | 可选环境变量 |
 |:---:|:---|:---|:---|
-| 1 | 🔔 Bark（iOS 推送） | `BARK_PUSH` | `BARK_ARCHIVE` `BARK_GROUP` `BARK_SOUND` `BARK_ICON` `BARK_LEVEL` `BARK_URL` |
-| 2 | 🖥️ 控制台输出 | `CONSOLE` | — |
-| 3 | 🤖 钉钉机器人 | `DD_BOT_TOKEN` `DD_BOT_SECRET` | — |
-| 4 | 🪶 飞书机器人 | `FSKEY` | — |
-| 5 | 💬 go-cqhttp | `GOBOT_URL` `GOBOT_QQ` | `GOBOT_TOKEN` |
-| 6 | 📡 Gotify | `GOTIFY_URL` `GOTIFY_TOKEN` | `GOTIFY_PRIORITY` |
-| 7 | 📲 iGot | `IGOT_PUSH_KEY` | — |
-| 8 | 📢 Server酱 | `PUSH_KEY` | — |
-| 9 | 🦌 PushDeer | `DEER_KEY` | `DEER_URL` |
-| 10 | 💬 Synology Chat | `CHAT_URL` `CHAT_TOKEN` | — |
-| 11 | ➕ PushPlus（微信推送） | `PUSH_PLUS_TOKEN` | `PUSH_PLUS_USER` `PUSH_PLUS_TEMPLATE` `PUSH_PLUS_CHANNEL` `PUSH_PLUS_WEBHOOK` `PUSH_PLUS_CALLBACKURL` `PUSH_PLUS_TO` |
-| 12 | 🤖 微加机器人 | `WE_PLUS_BOT_TOKEN` | `WE_PLUS_BOT_RECEIVER` `WE_PLUS_BOT_VERSION` |
-| 13 | 💬 Qmsg酱 | `QMSG_KEY` `QMSG_TYPE` | — |
-| 14 | 🏢 企业微信应用 | `QYWX_AM` | `QYWX_ORIGIN` |
-| 15 | 🏢 企业微信机器人 | `QYWX_KEY` | `QYWX_ORIGIN` |
-| 16 | ✈️ Telegram | `TG_BOT_TOKEN` `TG_USER_ID` | `TG_API_HOST` `TG_PROXY_AUTH` `TG_PROXY_HOST` `TG_PROXY_PORT` |
-| 17 | 🤖 智能微秘书 | `AIBOTK_KEY` `AIBOTK_TYPE` `AIBOTK_NAME` | — |
-| 18 | 📧 SMTP 邮件 | `SMTP_SERVER` `SMTP_SSL` `SMTP_EMAIL` `SMTP_PASSWORD` `SMTP_NAME` | — |
-| 19 | 📨 PushMe | `PUSHME_KEY` | `PUSHME_URL` |
-| 20 | 🐧 CHRONOCAT（QQ 推送） | `CHRONOCAT_URL` `CHRONOCAT_QQ` `CHRONOCAT_TOKEN` | — |
-| 21 | 🔗 自定义通知（Webhook） | `WEBHOOK_URL` `WEBHOOK_METHOD` | `WEBHOOK_BODY` `WEBHOOK_HEADERS` `WEBHOOK_CONTENT_TYPE` |
-| 22 | 🔔 ntfy | `NTFY_TOPIC` | `NTFY_URL` `NTFY_PRIORITY` |
-| 23 | 📱 WxPusher（微信推送） | `WXPUSHER_APP_TOKEN` + (`WXPUSHER_TOPIC_IDS` 或 `WXPUSHER_UIDS`) | — |
+| <img src="src/notify/bark.png" width="24"> | **Bark**（iOS 推送） | `BARK_PUSH` | `BARK_ARCHIVE` `BARK_GROUP` `BARK_SOUND` `BARK_ICON` `BARK_LEVEL` `BARK_URL` |
+| <img src="src/notify/console.png" width="24"> | **控制台输出** | `CONSOLE` | — |
+| <img src="src/notify/dingtalk.png" width="24"> | **钉钉机器人** | `DD_BOT_TOKEN` `DD_BOT_SECRET` | — |
+| <img src="src/notify/feishu.png" width="24"> | **飞书机器人** | `FSKEY` | — |
+| <img src="src/notify/go-cqhttp.png" width="24"> | **go-cqhttp** | `GOBOT_URL` `GOBOT_QQ` | `GOBOT_TOKEN` |
+| <img src="src/notify/gotify.png" width="24"> | **Gotify** | `GOTIFY_URL` `GOTIFY_TOKEN` | `GOTIFY_PRIORITY` |
+| <img src="src/notify/igot.png" width="24"> | **iGot** | `IGOT_PUSH_KEY` | — |
+| <img src="src/notify/serverchan.png" width="24"> | **Server酱** | `PUSH_KEY` | — |
+| <img src="src/notify/pushdeer.png" width="24"> | **PushDeer** | `DEER_KEY` | `DEER_URL` |
+| <img src="src/notify/synology.png" width="24"> | **Synology Chat** | `CHAT_URL` `CHAT_TOKEN` | — |
+| <img src="src/notify/pushplus.png" width="24"> | **PushPlus**（微信推送） | `PUSH_PLUS_TOKEN` | `PUSH_PLUS_USER` `PUSH_PLUS_TEMPLATE` `PUSH_PLUS_CHANNEL` `PUSH_PLUS_WEBHOOK` `PUSH_PLUS_CALLBACKURL` `PUSH_PLUS_TO` |
+| <img src="src/notify/weplusbot.png" width="24"> | **微加机器人** | `WE_PLUS_BOT_TOKEN` | `WE_PLUS_BOT_RECEIVER` `WE_PLUS_BOT_VERSION` |
+| <img src="src/notify/qmsg.png" width="24"> | **Qmsg酱** | `QMSG_KEY` `QMSG_TYPE` | — |
+| <img src="src/notify/wechat-work.png" width="24"> | **企业微信应用** | `QYWX_AM` | `QYWX_ORIGIN` |
+| <img src="src/notify/wechat-work.png" width="24"> | **企业微信机器人** | `QYWX_KEY` | `QYWX_ORIGIN` |
+| <img src="src/notify/telegram.png" width="24"> | **Telegram** | `TG_BOT_TOKEN` `TG_USER_ID` | `TG_API_HOST` `TG_PROXY_AUTH` `TG_PROXY_HOST` `TG_PROXY_PORT` |
+| <img src="src/notify/aibotk.png" width="24"> | **智能微秘书** | `AIBOTK_KEY` `AIBOTK_TYPE` `AIBOTK_NAME` | — |
+| <img src="src/notify/smtp.png" width="24"> | **SMTP 邮件** | `SMTP_SERVER` `SMTP_SSL` `SMTP_EMAIL` `SMTP_PASSWORD` `SMTP_NAME` | — |
+| <img src="src/notify/pushme.png" width="24"> | **PushMe** | `PUSHME_KEY` | `PUSHME_URL` |
+| <img src="src/notify/chronocat.png" width="24"> | **CHRONOCAT**（QQ 推送） | `CHRONOCAT_URL` `CHRONOCAT_QQ` `CHRONOCAT_TOKEN` | — |
+| <img src="src/notify/webhook.png" width="24"> | **自定义通知**（Webhook） | `WEBHOOK_URL` `WEBHOOK_METHOD` | `WEBHOOK_BODY` `WEBHOOK_HEADERS` `WEBHOOK_CONTENT_TYPE` |
+| <img src="src/notify/ntfy.png" width="24"> | **ntfy** | `NTFY_TOPIC` | `NTFY_URL` `NTFY_PRIORITY` |
+| <img src="src/notify/wxpusher.png" width="24"> | **WxPusher**（微信推送） | `WXPUSHER_APP_TOKEN` + (`WXPUSHER_TOPIC_IDS` 或 `WXPUSHER_UIDS`) | — |
 
 **通知附加选项：**
 
@@ -137,6 +150,9 @@ QinglongScripts/
 │   └── YysHuijuanTime.md
 ├── docs/                   # 项目文档
 │   └── index.html
+├── src/                    # 资源文件
+│   ├── scripts/            # 脚本图标
+│   └── notify/             # 通知渠道图标
 ├── .env.example            # 环境变量示例
 ├── .gitignore
 ├── Airport.py              # 机场签到

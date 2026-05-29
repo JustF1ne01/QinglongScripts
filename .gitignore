@@ -5,3 +5,4 @@ __pycache__
 .env
 *.har
 .valorant_ct
+node_modules/
