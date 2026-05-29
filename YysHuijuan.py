@@ -108,9 +108,25 @@ def login_by_urs(urs_id, urs_token, account, uid, token):
             "deviceId": DEVICE_ID, "os": "android", "version": VERSION, "osVersion": "16",
             "device": "25102RKBEC", "udid": DEVICE_ID[:16], "unisdkDeviceId": DEVICE_ID[:16],
             "autoLogin": True, "phoneUnbindCheck": False}
-    result = god_post("/v1/app/base/user/login-by-urs-token", body, uid, token)
-    log_success(f"登录成功: {result['userInfo']['user'].get('nick','')}")
-    return result["userInfo"]["user"]["uid"], result["token"]
+    try:
+        result = god_post("/v1/app/base/user/login-by-urs-token", body, uid, token)
+        log_success(f"登录成功: {result['userInfo']['user'].get('nick','')}")
+        return result["userInfo"]["user"]["uid"], result["token"]
+    except RuntimeError as e:
+        err_str = str(e)
+        log_warning(f"标准登录失败: {err_str}")
+        # 尝试不同的URS type值
+        for t in [1, 2, 5, 11, 20]:
+            log_info(f"尝试 URS type={t}...")
+            body["urs"]["type"] = t
+            try:
+                result = god_post("/v1/app/base/user/login-by-urs-token", body, uid, token)
+                log_success(f"登录成功 (type={t}): {result['userInfo']['user'].get('nick','')}")
+                return result["userInfo"]["user"]["uid"], result["token"]
+            except RuntimeError:
+                continue
+        # 所有尝试都失败
+        raise RuntimeError(f"URS登录失败(所有type均尝试): {err_str}")
 
 
 def get_gmsdk(uid, token):
