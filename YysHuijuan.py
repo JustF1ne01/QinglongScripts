@@ -5,7 +5,7 @@ cron: 20 0 * * *
 new Env("阴阳师绘卷查询")
 阴阳师绘卷查询 - 自动根据活动时间查询
 """
-import hashlib, json, os, re, time, uuid, requests
+import hashlib, json, os, re, time, uuid, base64, requests
 from datetime import datetime, timedelta
 
 from utils import log_info, log_success, log_warning, log_error
@@ -18,6 +18,8 @@ ACTIVITY_JSON = os.path.join(SCRIPT_DIR, "yys_huijuan_time.json")
 GL_UID = os.environ.get("YYS_GL_UID", "")
 GL_TOKEN = os.environ.get("YYS_GL_TOKEN", "")
 URS_CREDENTIALS = os.environ.get("YYS_URS_CREDENTIALS", "")
+EMAIL = os.environ.get("YYS_EMAIL", "")
+PASSWORD = os.environ.get("YYS_PASSWORD", "")
 DEVICE_ID = "46758156facc4291a2acd9545b9ad90e"
 GOD_API = "https://god.gameyw.netease.com"
 TURING_API = "https://turing.gameyw.netease.com"
@@ -26,6 +28,9 @@ SERVER = "15004"
 SIGN_SECRET = "affa62e3b7376a0cbd20ea2f6c07072f"
 VERSION = "4.18.2"
 SOP_ID = "68ea0f7c38aa9e6367e781a1"
+
+# RSA公钥（从APK libursandroidunity.so提取）
+RSA_PUBLIC_KEY_B64 = "MIICdgIBADANBgkqhkiG9w0BAQEFAASCAmAwggJcAgEAAoGBAMnBrGFX33Iigp5hWGeDce2nwKYMBq12bMJIJC6MA+KUk58lEOpHFmSTdiqIIUxYxxr/uoThnoX+p/tzg5m1IisiOM8VtKqo3OuPuAiKlvBtbOK0lQ3QCkHsIDU6kSNoFJhEHgiOBxAEq45BS3DzeyK6JaGlOkIm27Um9UrHzMr/AgMBAAECgYEAs5Kg9ic7JyAWOBeWktOIpKlpq6EKlHvSQ33oTlGq55GsbrqT+qF5Cd3CEAsH8CcYWCyC++DAsqy9IO5olHeGx13+zqCL7JyUCrF4CQ5btSxAWNN1O6WEo9/9MaPlIe8gZ6IAC9jqhqG6+j0FR1uEQZOwVDiDwxr7w9IqZ6LC5WkCQQDzCALhZHJQZQlAgdrYkzRaa06Jm6bmV3eadIjKgfmSe6xwl0wS3LWg6deJN/OV/lhsTVp24VEZgbIgxQMMuiU7AkEA1IXRcWXdXVmgdnqcJA6lq3yL91YCLLe69cUahlDI4sQ4vL7okzSSc02oaWfTm/5imSW6BsYwHpvVyQfJPfBFDQJAQ4GKK0lXZ3VpKH3paBcbh7Ie0qJlrb3F/yU3ieiohkPMFkowW1zrJpNNx1O/WX6Y2RxzcGoNuOQJsoiG3FYoWQJAMWJrOfuexft2wzFYqTRSIRhO+gmddcC4DDZiJIYPOEq6mHmQV+ymf26zTNMYpC4nwUi4Aqz5L5OsyQsrI1563QJASUinf6sKkrBPmP+F4imfnSC0Y83KZcriW6dedJAK28TsvT2eg7A5dfgDdvIr85dv1zfRT7w4B31ycJgQJ09bZQ=="
 
 TH = {"Content-Type": "application/json",
     "User-Agent": "Mozilla/5.0 (Linux; Android 16; 25102RKBEC Build/BP2A.250605.031.A3; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/148.0.7778.120 Mobile Safari/537.36 Godlike/4.18.2 (channel/open_tencent) UEPay/com.netease.gl/android7.12.28",
@@ -80,6 +85,79 @@ def check_activity_period(activity):
 
 def gl_checksum(ct, cur, dev, nonce, src, token, uid, ver):
     return hashlib.sha1((SIGN_SECRET + ct + cur + dev + nonce + src + token + uid + ver).encode()).hexdigest()
+
+
+def uns_email_login():
+    """通过UNS SDK邮箱密码登录获取新URS凭证"""
+    if not EMAIL or not PASSWORD:
+        log_warning("未设置YYS_EMAIL/YYS_PASSWORD，跳过UNS登录")
+        return None, None
+
+    try:
+        from gmssl import sm4 as sm4_mod
+        from Crypto.PublicKey import RSA
+        from Crypto.Cipher import PKCS1_v1_5
+    except ImportError:
+        log_warning("缺少gmssl/pycryptodome依赖，尝试安装...")
+        import subprocess, sys
+        try:
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "gmssl", "pycryptodome", "-q"])
+            from gmssl import sm4 as sm4_mod
+            from Crypto.PublicKey import RSA
+            from Crypto.Cipher import PKCS1_v1_5
+        except Exception as e:
+            log_error(f"安装依赖失败: {e}")
+            return None, None
+
+    log_info("通过UNS邮箱密码登录...")
+    try:
+        rsa_key = RSA.import_key(base64.b64decode(RSA_PUBLIC_KEY_B64))
+        pwd_md5 = hashlib.md5(PASSWORD.encode()).hexdigest()
+        req_id = hashlib.md5(str(uuid.uuid4()).encode()).hexdigest()[:32]
+
+        p1_params = {
+            "username": EMAIL, "pwd": pwd_md5, "sn": "android", "nw": "wifi",
+            "md": "25102RKBEC", "idcf": DEVICE_ID, "pdt": "godlike_app",
+            "yv": "1.6.4", "product": "godlike_app", "platform": "android",
+            "version": "1.6.4", "appVersion": VERSION, "systemVersion": 35,
+            "model": "25102RKBEC", "network": "wifi", "emulator": 0,
+            "uniqueId": DEVICE_ID, "ua": "okhttp/4.9.1",
+            "time": int(time.time() * 1000), "reqId": req_id,
+        }
+        p1_json = json.dumps(p1_params, separators=(',', ':'))
+
+        sm4_key = hashlib.md5(str(uuid.uuid4()).encode()).hexdigest()
+        sm4_iv = hashlib.md5(str(uuid.uuid4()).encode()).hexdigest()
+
+        crypt = sm4_mod.CryptSM4()
+        crypt.set_key(bytes.fromhex(sm4_key), sm4_mod.SM4_ENCRYPT)
+        p1_enc = crypt.cbc_encrypt(p1_json.encode(), bytes.fromhex(sm4_iv)).hex()
+
+        cipher = PKCS1_v1_5.new(rsa_key)
+        p2_json = json.dumps({"smkey": sm4_key, "smIv": sm4_iv}, separators=(',', ':'))
+        p2_enc = cipher.encrypt(p2_json.encode()).hex().upper()
+
+        body = {
+            "p1": p1_enc, "p2": p2_enc, "p3": "f8740102324efeba30deb0f1d66a3ae3",
+            "p4": "zh_CN", "username": EMAIL, "pwd": pwd_md5,
+        }
+        data = "&".join(f"{k}={requests.utils.quote(str(v))}" for k, v in body.items())
+        headers = {"Content-Type": "application/x-www-form-urlencoded", "User-Agent": "UNS-SDK/1.6.4 (Android)"}
+
+        resp = requests.post("https://sdk.reg.163.com/uns/sdk/login/mail/pwd/v1/login",
+            data=data, headers=headers, timeout=30)
+        result = resp.json()
+
+        if result.get("success"):
+            token = result.get("data", {}).get("token", "")
+            log_success(f"UNS登录成功! token={token[:16]}...")
+            return token, EMAIL
+        else:
+            log_warning(f"UNS登录失败: {result.get('msg', '')}")
+            return None, None
+    except Exception as e:
+        log_error(f"UNS登录异常: {e}")
+        return None, None
 
 
 def _headers(uid, token):
@@ -257,25 +335,68 @@ def main():
     global GL_UID, GL_TOKEN
     uid, token = GL_UID, GL_TOKEN
     if not uid or not token:
-        if not URS_CREDENTIALS:
-            log_error("请设置环境变量")
+        if URS_CREDENTIALS:
+            p = URS_CREDENTIALS.split("|")
+            if len(p) == 3:
+                try:
+                    uid, token = login_by_urs(p[0], p[1], p[2], "", "")
+                    GL_UID, GL_TOKEN = uid, token
+                except RuntimeError:
+                    log_warning("URS凭证登录失败，尝试UNS邮箱登录...")
+                    uns_token, uns_account = uns_email_login()
+                    if uns_token:
+                        try:
+                            uid, token = login_by_urs(uns_token, uns_token, uns_account, "", "")
+                            GL_UID, GL_TOKEN = uid, token
+                        except RuntimeError as e:
+                            log_error(f"UNS token登录也失败: {e}")
+                            return
+                    else:
+                        log_error("所有登录方式均失败")
+                        return
+            else:
+                log_error("URS格式错误")
+                return
+        elif EMAIL and PASSWORD:
+            uns_token, uns_account = uns_email_login()
+            if uns_token:
+                try:
+                    uid, token = login_by_urs(uns_token, uns_token, uns_account, "", "")
+                    GL_UID, GL_TOKEN = uid, token
+                except RuntimeError as e:
+                    log_error(f"UNS token登录失败: {e}")
+                    return
+            else:
+                log_error("UNS登录失败，请检查YYS_EMAIL/YYS_PASSWORD")
+                return
+        else:
+            log_error("请设置YYS_URS_CREDENTIALS或YYS_EMAIL/YYS_PASSWORD")
             return
-        p = URS_CREDENTIALS.split("|")
-        if len(p) != 3:
-            log_error("URS格式错误")
-            return
-        uid, token = login_by_urs(p[0], p[1], p[2], "", "")
-        GL_UID, GL_TOKEN = uid, token
 
     try:
         try:
             gm = get_gmsdk(uid, token)
         except RuntimeError as e:
-            if "824" in str(e) and URS_CREDENTIALS:
+            if "824" in str(e):
                 log_warning("token过期，自动刷新...")
-                p = URS_CREDENTIALS.split("|")
-                uid, token = login_by_urs(p[0], p[1], p[2], uid, token)
-                GL_UID, GL_TOKEN = uid, token
+                refreshed = False
+                if URS_CREDENTIALS:
+                    p = URS_CREDENTIALS.split("|")
+                    if len(p) == 3:
+                        try:
+                            uid, token = login_by_urs(p[0], p[1], p[2], uid, token)
+                            GL_UID, GL_TOKEN = uid, token
+                            refreshed = True
+                        except RuntimeError:
+                            pass
+                if not refreshed:
+                    log_warning("URS刷新失败，尝试UNS邮箱登录...")
+                    uns_token, uns_account = uns_email_login()
+                    if uns_token:
+                        uid, token = login_by_urs(uns_token, uns_token, uns_account, uid, token)
+                        GL_UID, GL_TOKEN = uid, token
+                    else:
+                        raise
                 gm = get_gmsdk(uid, token)
             else:
                 raise
