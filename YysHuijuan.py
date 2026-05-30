@@ -151,7 +151,10 @@ def uns_email_login():
 
         cipher = PKCS1_v1_5.new(rsa_key)
         p2_json = json.dumps({"smkey": sm4_key, "smIv": sm4_iv}, separators=(',', ':'))
-        p2_enc = base64.b64encode(cipher.encrypt(p2_json.encode())).decode()
+        # RSA encrypt → Base64 → uppercase hex (matching Java C60463z0.m29470b)
+        rsa_encrypted = cipher.encrypt(p2_json.encode())
+        rsa_b64 = base64.b64encode(rsa_encrypted).decode()
+        p2_enc = rsa_b64.encode('utf-8').hex().upper()
 
         body = {
             "p1": p1_enc, "p2": p2_enc,
