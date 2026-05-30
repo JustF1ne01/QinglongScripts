@@ -141,7 +141,15 @@ def uns_email_login():
         rsa_b64 = base64.b64encode(rsa_encrypted).decode()
         p2_enc = rsa_b64.encode('utf-8').hex().upper()
 
-        # p1-p4 as HTTP headers only (matching JADX C60454y.java)
+        # p1-p4 as HTTP headers, public params in JSON body
+        body = {
+            "username": EMAIL, "pwd": pwd_md5,
+            "appId": "", "product": "godlike_app", "platform": "android",
+            "version": "1.6.4", "appVersion": "4.18.2", "systemVersion": 35,
+            "model": "25102RKBEC", "network": "wifi", "emulator": 0,
+            "uniqueId": DEVICE_ID, "ua": "okhttp/4.9.1",
+            "time": int(time.time() * 1000), "reqId": req_id,
+        }
         headers = {
             "Content-Type": "application/json", "Connection": "close",
             "User-Agent": "okhttp/4.9.1",
@@ -151,7 +159,7 @@ def uns_email_login():
         }
 
         resp = requests.post("https://sdk.reg.163.com/uns/sdk/login/mail/pwd/v1/login",
-            headers=headers, timeout=30)
+            json=body, headers=headers, timeout=30)
         result = resp.json()
 
         if result.get("success"):
