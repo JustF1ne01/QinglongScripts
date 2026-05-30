@@ -142,6 +142,7 @@ def uns_email_login():
         p2_enc = rsa_b64.encode('utf-8').hex().upper()
 
         body = {
+            "username": EMAIL, "pwd": pwd_md5,
             "p1": p1_enc, "p2": p2_enc,
             "p3": "f8740102324efeba30deb0f1d66a3ae3", "p4": "zh_CN",
         }
