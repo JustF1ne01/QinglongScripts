@@ -129,25 +129,10 @@ def uns_email_login():
         sm4_key = hashlib.md5(str(uuid.uuid4()).encode()).hexdigest()
         sm4_iv = hashlib.md5(str(uuid.uuid4()).encode()).hexdigest()
 
-        # SM4 CBC with PKCS7 padding - manual implementation using ECB
-        p1_bytes = p1_json.encode('utf-8')
-        pad_len = 16 - (len(p1_bytes) % 16)
-        p1_padded = p1_bytes + bytes([pad_len] * pad_len)
-
-        key_bytes = bytes.fromhex(sm4_key)
-        iv_bytes = bytes.fromhex(sm4_iv)
-        # Manual CBC: C_i = SM4_ECB(P_i XOR C_{i-1}), C_0 = IV
-        crypt_ecb = sm4_mod.CryptSM4()
-        crypt_ecb.set_key(key_bytes, sm4_mod.SM4_ENCRYPT)
-        prev = iv_bytes
-        p1_enc_bytes = b''
-        for i in range(0, len(p1_padded), 16):
-            block = p1_padded[i:i+16]
-            xored = bytes(a ^ b for a, b in zip(block, prev))
-            encrypted_block = crypt_ecb.crypt_ecb(xored)
-            p1_enc_bytes += encrypted_block
-            prev = encrypted_block
-        p1_enc = p1_enc_bytes.hex()
+        # SM4/CBC/PKCS7Padding - gmssl crypt_cbc handles padding
+        crypt = sm4_mod.CryptSM4()
+        crypt.set_key(bytes.fromhex(sm4_key), sm4_mod.SM4_ENCRYPT)
+        p1_enc = crypt.crypt_cbc(bytes.fromhex(sm4_iv), p1_json.encode('utf-8')).hex()
 
         cipher = PKCS1_v1_5.new(rsa_key)
         p2_json = json.dumps({"smkey": sm4_key, "smIv": sm4_iv}, separators=(',', ':'))
