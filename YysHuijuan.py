@@ -147,7 +147,8 @@ def uns_email_login():
             "p3": "f8740102324efeba30deb0f1d66a3ae3", "p4": "zh_CN",
         }
         headers = {"Content-Type": "application/json", "Connection": "close",
-                   "User-Agent": "UNS-SDK/1.6.4 (Android)"}
+                   "User-Agent": "UNS-SDK/1.6.4 (Android)",
+                   "utid": ACCESS_ID, "rtid": req_id}
 
         resp = requests.post("https://sdk.reg.163.com/uns/sdk/login/mail/pwd/v1/login",
             json=body, headers=headers, timeout=30)
