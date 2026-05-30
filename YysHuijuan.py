@@ -145,11 +145,11 @@ def uns_email_login():
             "p1": p1_enc, "p2": p2_enc,
             "p3": "f8740102324efeba30deb0f1d66a3ae3", "p4": "zh_CN",
         }
-        data = "&".join(f"{k}={requests.utils.quote(str(v))}" for k, v in body.items())
-        headers = {"Content-Type": "application/x-www-form-urlencoded", "User-Agent": "UNS-SDK/1.6.4 (Android)"}
+        headers = {"Content-Type": "application/json", "Connection": "close",
+                   "User-Agent": "UNS-SDK/1.6.4 (Android)"}
 
         resp = requests.post("https://sdk.reg.163.com/uns/sdk/login/mail/pwd/v1/login",
-            data=data, headers=headers, timeout=30)
+            json=body, headers=headers, timeout=30)
         result = resp.json()
 
         if result.get("success"):
