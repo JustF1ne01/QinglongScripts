@@ -129,25 +129,33 @@ def uns_email_login():
         sm4_key = hashlib.md5(str(uuid.uuid4()).encode()).hexdigest()
         sm4_iv = hashlib.md5(str(uuid.uuid4()).encode()).hexdigest()
 
-        # PKCS7 padding
+        # SM4 CBC with PKCS7 padding - manual implementation using ECB
         p1_bytes = p1_json.encode('utf-8')
         pad_len = 16 - (len(p1_bytes) % 16)
         p1_padded = p1_bytes + bytes([pad_len] * pad_len)
 
-        crypt = sm4_mod.CryptSM4()
-        crypt.set_key(bytes.fromhex(sm4_key), sm4_mod.SM4_ENCRYPT)
-        try:
-            p1_enc = crypt.cbc_encrypt(p1_padded, bytes.fromhex(sm4_iv)).hex()
-        except AttributeError:
-            p1_enc = crypt.crypt_cbc(bytes.fromhex(sm4_iv), p1_padded).hex()
+        key_bytes = bytes.fromhex(sm4_key)
+        iv_bytes = bytes.fromhex(sm4_iv)
+        # Manual CBC: C_i = SM4_ECB(P_i XOR C_{i-1}), C_0 = IV
+        crypt_ecb = sm4_mod.CryptSM4()
+        crypt_ecb.set_key(key_bytes, sm4_mod.SM4_ENCRYPT)
+        prev = iv_bytes
+        p1_enc_bytes = b''
+        for i in range(0, len(p1_padded), 16):
+            block = p1_padded[i:i+16]
+            xored = bytes(a ^ b for a, b in zip(block, prev))
+            encrypted_block = crypt_ecb.crypt_ecb(xored)
+            p1_enc_bytes += encrypted_block
+            prev = encrypted_block
+        p1_enc = p1_enc_bytes.hex()
 
         cipher = PKCS1_v1_5.new(rsa_key)
         p2_json = json.dumps({"smkey": sm4_key, "smIv": sm4_iv}, separators=(',', ':'))
         p2_enc = cipher.encrypt(p2_json.encode()).hex().upper()
 
         body = {
-            "p1": p1_enc, "p2": p2_enc, "p3": "f8740102324efeba30deb0f1d66a3ae3",
-            "p4": "zh_CN", "username": EMAIL, "pwd": pwd_md5,
+            "p1": p1_enc, "p2": p2_enc,
+            "p3": "f8740102324efeba30deb0f1d66a3ae3", "p4": "zh_CN",
         }
         data = "&".join(f"{k}={requests.utils.quote(str(v))}" for k, v in body.items())
         headers = {"Content-Type": "application/x-www-form-urlencoded", "User-Agent": "UNS-SDK/1.6.4 (Android)"}
