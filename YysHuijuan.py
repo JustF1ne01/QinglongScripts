@@ -141,20 +141,36 @@ def uns_email_login():
         rsa_b64 = base64.b64encode(rsa_encrypted).decode()
         p2_enc = rsa_b64.encode('utf-8').hex().upper()
 
-        # p1-p4 as HTTP headers, public params in JSON body
-        body = {
-            "username": EMAIL, "pwd": pwd_md5,
-            "appId": "", "product": "godlike_app", "platform": "android",
-            "version": "1.6.4", "appVersion": "4.18.2", "systemVersion": 35,
-            "model": "25102RKBEC", "network": "wifi", "emulator": 0,
-            "uniqueId": DEVICE_ID, "ua": "okhttp/4.9.1",
-            "time": int(time.time() * 1000), "reqId": req_id,
+        # Build device data JSON (from C60311n0 interceptor)
+        device_data = {
+            "sn": "android", "dn": "", "rs": "", "ca": "", "nw": "wifi",
+            "is": 0, "la": "", "lo": "", "im": "", "mac": "", "aid": "",
+            "me": "", "md": "25102RKBEC", "uid": DEVICE_ID, "idcf": DEVICE_ID,
+            "pdt": "godlike_app", "pv": "1.0.0", "yv": "1.6.4", "ydfp": DEVICE_ID[:16],
         }
+        device_json = json.dumps(device_data, separators=(',', ':'))
+
+        # SM4 encrypt device data
+        dev_sm4_key = hashlib.md5(str(uuid.uuid4()).encode()).hexdigest()
+        dev_sm4_iv = hashlib.md5(str(uuid.uuid4()).encode()).hexdigest()
+        dev_crypt = sm4_mod.CryptSM4()
+        dev_crypt.set_key(bytes.fromhex(dev_sm4_key), sm4_mod.SM4_ENCRYPT)
+        icon_enc = dev_crypt.crypt_cbc(bytes.fromhex(dev_sm4_iv), device_json.encode()).hex()
+
+        # Hex-encode SM4 key and IV (matching C60463z0.m29471a)
+        sm4_key_hex = bytes.fromhex(dev_sm4_key).hex()
+        sm4_iv_hex = bytes.fromhex(dev_sm4_iv).hex()
+
+        # Request body: encrypted device data + source
+        body = {"icon": icon_enc, "src": "SDK_Android"}
+
+        # p1-p4 as HTTP headers
         headers = {
             "Content-Type": "application/json", "Connection": "close",
             "User-Agent": "okhttp/4.9.1",
             "p1": p1_enc, "p2": p2_enc,
             "p3": "f8740102324efeba30deb0f1d66a3ae3", "p4": "zh_CN",
+            "sm4Key": sm4_key_hex, "sm4IV": sm4_iv_hex,
             "utid": "f8740102324efeba30deb0f1d66a3ae3", "rtid": req_id,
         }
 
