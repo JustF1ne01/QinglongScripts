@@ -161,17 +161,18 @@ def uns_email_login():
         sm4_key_hex = bytes.fromhex(dev_sm4_key).hex().lower()
         sm4_iv_hex = bytes.fromhex(dev_sm4_iv).hex().lower()
 
-        # Request body = all interceptor fields combined
+        # Body: device data + src + sm4Key/sm4IV + utid/rtid (from interceptors)
         body = {
             "icon": icon_enc, "src": "SDK_Android",
             "sm4Key": sm4_key_hex, "sm4IV": sm4_iv_hex,
-            "p1": p1_enc, "p2": p2_enc,
-            "p3": "f8740102324efeba30deb0f1d66a3ae3", "p4": "zh_CN",
             "utid": "f8740102324efeba30deb0f1d66a3ae3", "rtid": req_id,
         }
+        # Headers: p1-p4 + Connection + Content-Type (from C60414v3)
         headers = {
             "Content-Type": "application/json", "Connection": "close",
             "User-Agent": "okhttp/4.9.1",
+            "p1": p1_enc, "p2": p2_enc,
+            "p3": "f8740102324efeba30deb0f1d66a3ae3", "p4": "zh_CN",
         }
 
         resp = requests.post("https://sdk.reg.163.com/uns/sdk/login/mail/pwd/v1/login",
