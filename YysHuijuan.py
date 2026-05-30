@@ -131,7 +131,10 @@ def uns_email_login():
 
         crypt = sm4_mod.CryptSM4()
         crypt.set_key(bytes.fromhex(sm4_key), sm4_mod.SM4_ENCRYPT)
-        p1_enc = crypt.cbc_encrypt(p1_json.encode(), bytes.fromhex(sm4_iv)).hex()
+        try:
+            p1_enc = crypt.cbc_encrypt(p1_json.encode(), bytes.fromhex(sm4_iv)).hex()
+        except AttributeError:
+            p1_enc = crypt.crypt_cbc(bytes.fromhex(sm4_iv), p1_json.encode()).hex()
 
         cipher = PKCS1_v1_5.new(rsa_key)
         p2_json = json.dumps({"smkey": sm4_key, "smIv": sm4_iv}, separators=(',', ':'))
