@@ -151,7 +151,7 @@ def uns_email_login():
 
         cipher = PKCS1_v1_5.new(rsa_key)
         p2_json = json.dumps({"smkey": sm4_key, "smIv": sm4_iv}, separators=(',', ':'))
-        p2_enc = cipher.encrypt(p2_json.encode()).hex().upper()
+        p2_enc = base64.b64encode(cipher.encrypt(p2_json.encode())).decode()
 
         body = {
             "p1": p1_enc, "p2": p2_enc,
