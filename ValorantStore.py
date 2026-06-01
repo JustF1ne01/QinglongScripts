@@ -33,6 +33,7 @@ QUALITY_MAP = {
 API_BASE = "https://app.mval.qq.com"
 COMMON_PARAMS = "source_game_zone=agame&game_zone=agame"
 CT_FILE = Path(__file__).parent / ".valorant_ct"
+AT_FILE = Path(__file__).parent / ".valorant_at"  # 持久化 access_token
 
 
 def parse_cookie(cookie: str) -> dict:
@@ -63,8 +64,25 @@ def save_ct(ct: str):
     CT_FILE.write_text(ct)
 
 
+def load_at(cookie_dict: dict) -> str:
+    """加载 access_token: 优先环境变量，其次本地文件"""
+    at = cookie_dict.get("access_token", "")
+    if at:
+        return at
+    if AT_FILE.exists():
+        at = AT_FILE.read_text().strip()
+        if at:
+            return at
+    return ""
+
+
+def save_at(at: str):
+    """保存 access_token 到本地文件，供下次运行使用"""
+    AT_FILE.write_text(at)
+
+
 def create_session(cookie: str) -> requests.Session:
-    """创建带 Cookie 的 Session"""
+    """创建带 Cookie 的 Session，优先使用持久化的 access_token"""
     session = requests.Session()
     session.headers.update({
         "User-Agent": "mval/2.6.0.10062 Channel/5 Mozilla/5.0 (Linux; Android 16; wv) AppleWebKit/537.36",
@@ -74,6 +92,10 @@ def create_session(cookie: str) -> requests.Session:
     cookie_dict = parse_cookie(cookie)
     # ct 不是标准 cookie，不加入 session cookies
     cookie_dict.pop("ct", None)
+    # 优先使用持久化的 access_token（更可能是最新的）
+    saved_at = load_at(cookie_dict)
+    if saved_at:
+        cookie_dict["access_token"] = saved_at
     requests.utils.add_dict_to_cookiejar(session.cookies, cookie_dict)
     return session
 
@@ -170,6 +192,7 @@ def refresh_token(session: requests.Session) -> str:
         token = result.get("data", {}).get("access_token", "")
         if token:
             session.cookies.set("access_token", token, domain="app.mval.qq.com")
+            save_at(token)  # 持久化保存新 token
             log_success("access_token 刷新成功")
             return token
     log_warning(f"刷新 token 失败: {result.get('msg', result.get('err_msg', '未知'))}")
@@ -233,12 +256,19 @@ def main():
 
     session = create_session(VALORANT_COOKIE)
 
-    # 刷新认证: refresh_client_ticket → 新 ct + tid, refresh_third_token → 新 access_token
-    new_ct, _ = refresh_web_ticket(session, ct)
+    # 刷新认证: 先刷新 access_token，再用新 AT 刷新 ct
+    # 这样即使 AT 快过期，也能先续上，再用新 AT 刷新 ct
+    new_at = refresh_token(session)
+    if not new_at:
+        log_warning("access_token 刷新失败，尝试用旧 token 继续...")
+
+    new_ct, ct_ok = refresh_web_ticket(session, ct)
     if new_ct and new_ct != ct:
         save_ct(new_ct)
-
-    refresh_token(session)
+        log_success(f"ct 已更新并保存")
+    elif not ct_ok:
+        log_warning("ct 刷新失败，可能需要重新抓包")
+        notify_send("掌瓦商店 Token 告警", "⚠️ access_token 或 ct 刷新失败，请尽快重新抓包，否则下次将无法获取商店")
 
     # 获取绑定账号
     bind_result = api_post(session, "/go/auth/bind_relation_list")
