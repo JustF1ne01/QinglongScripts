@@ -57,7 +57,6 @@ https://github.com/CN-Grace/QinglongScripts.git
 | <img src="docs/src/scripts/sync_password.png" width="24"> | Sync_Password.py | Bitwarden 备份 | `0 0 * * *` | 每天午夜执行，同步密码库 |
 | <img src="docs/src/scripts/tieba.png" width="24"> | Tieba.py | 百度贴吧签到 | `0 0 * * *` | 每天午夜执行 |
 | <img src="docs/src/scripts/valorantstore.png" width="24"> | ValorantStore.py | Valorant 商店 | `15 8 * * *` | 每天早上8:15执行，查询每日皮肤 |
-| <img src="docs/src/scripts/yys.png" width="24"> | YysHuijuan.py | 阴阳师绘卷查询 | `20 0 * * *` | 每天午夜0:20执行，查询绘卷碎片 |
 | <img src="docs/src/scripts/yys.png" width="24"> | YysHuijuanTime.py | 阴阳师绘卷时间获取 | `0 0 * * *` | 每天午夜执行，获取活动时间 |
 | — | notifier.py | 通知模块 | — | 公共依赖，非定时任务 |
 | — | utils.py | 公共工具 | — | 公共依赖，非定时任务 |
@@ -84,7 +83,6 @@ https://github.com/CN-Grace/QinglongScripts.git
 - [Sync_Password.md](api/Sync_Password.md) - Bitwarden 密码同步 API
 - [Tieba.md](api/Tieba.md) - 百度贴吧签到 API
 - [ValorantStore.md](api/ValorantStore.md) - Valorant 商店查询 API
-- [YysHuijuan.md](api/YysHuijuan.md) - 阴阳师绘卷查询 API
 - [YysHuijuanTime.md](api/YysHuijuanTime.md) - 阴阳师绘卷时间获取 API
 
 ---
@@ -146,7 +144,6 @@ QinglongScripts/
 │   ├── Sync_Password.md
 │   ├── Tieba.md
 │   ├── ValorantStore.md
-│   ├── YysHuijuan.md
 │   └── YysHuijuanTime.md
 ├── docs/                   # 项目文档
 │   ├── index.html
@@ -168,7 +165,6 @@ QinglongScripts/
 ├── Tieba.py                # 百度贴吧签到
 ├── utils.py                # 公共工具
 ├── ValorantStore.py        # 掌瓦每日商店
-├── YysHuijuan.py           # 阴阳师绘卷查询
 └── YysHuijuanTime.py       # 阴阳师绘卷时间获取
 ```
 
